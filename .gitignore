@@ -1,0 +1,11 @@
+.vscode
+.cache
+target
+*.cjo
+*.a
+*.macrocall
+testcode*.txt
+*.toml
+!cjpm.toml
+log.txt
+node_modules
