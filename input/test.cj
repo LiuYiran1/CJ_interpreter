@@ -1,4 +1,4 @@
 main() {
-    var a = 1
-    a
+    var a : String = 1;
+
 }

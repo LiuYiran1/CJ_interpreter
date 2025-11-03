@@ -12,6 +12,12 @@ class Lab1TodoException <: Exception {
     }
 }
 
+class UnhandledTokenKind <: Exception{
+    public init(message: String) {
+        super("Unhandled Token Kind: " + message)
+    }
+}
+
 /** 
  * Evaluator Visitor
  *
@@ -26,8 +32,8 @@ public open class Evaluator <: Visitor<Value> {
     //
     // private let context = ...
     // private let static_scope = ...
-    let recordStack = ArrayStack<ActivationRecord>()
-    var curRecord : ?ActivationRecord = None
+    let recordsStack = ArrayStack<ActivationRecords>()
+    var curRecords : ?ActivationRecords = None
 
     public open override func visit(_: Program): Value {
         throw UnsupportedException("Unimplemented method for Visitor : Program")
@@ -67,9 +73,12 @@ public open class Evaluator <: Visitor<Value> {
 
     public open override func visit(lit: LitConstExpr): Value {
         match (lit.literal.kind) {
-            case TokenKind.INTEGER_LITERAL => Value.from(Int64.parse(lit.literal.value))
-            case _ => throw Lab1TodoException("There are more literal types to implement")
+            case TokenKind.INTEGER_LITERAL => return Value.from(Int64.parse(lit.literal.value))
+            case _ => throw UnhandledTokenKind(lit.literal.kind.toString() + " in LitConstExpr");    
         }
+
+
+
     }
 
     public open override func visit(expr: AssignExpr): Value {
@@ -77,20 +86,28 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(ref: RefExpr): Value {
-        throw Lab1TodoException("Reference Expression Evaluation Not Implemented")
+        match(ref.identifier.kind){
+            case TokenKind.IDENTIFIER => 
+                if (let Some(curRecords) <- curRecords) {
+                    return curRecords.getRecordValue(ref.identifier.value, ref);
+                }else{
+                    throw Exception();
+                }
+            case _ => throw UnhandledTokenKind(ref.identifier.kind.toString() + " in RefExpr");    
+        }
     }
 
     public open override func visit(block: Block): Value {
         // 加入活动记录
-        var newRecord : ActivationRecord
-        if(recordStack.isEmpty()){
-            newRecord = BlockActivationRecord(None, None, None)
+        var newRecords : ActivationRecords
+        if(recordsStack.isEmpty()){
+            newRecords = BlockActivationRecords(None, None, None)
         } else {
-            var last = recordStack.peek()
-            newRecord = BlockActivationRecord(None, last, None);
+            var last = recordsStack.peek()
+            newRecords = BlockActivationRecords(None, last, None);
         }
-        recordStack.add(newRecord)
-        curRecord = newRecord
+        recordsStack.add(newRecords)
+        curRecords = newRecords
 
         var ret = Value.VUnit
         for (stmt in block.nodes.iterator()) {
@@ -120,9 +137,32 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(decl: VarDecl): Value {
-        // String varName = decl.
-        var ret = Value.VUnit
-        return ret
+        var exp_val : ?Value = None;
+
+        if(let Some(exp) <- decl.initializer){
+            match (exp) {
+                case b: BinaryExpr => exp_val = b.traverse(this)
+                case u: UnaryExpr => exp_val = u.traverse(this)
+                case l: LitConstExpr => exp_val = l.traverse(this) // 直接的字面量
+                case p: ParenExpr => exp_val = p.traverse(this) // 括号表达式
+                case _ => throw UnsupportedException("不支持的 Expr 类型")
+            }
+        }
+
+        var varName : String = decl.identifier.value;
+        var newRecord : Record = Record(decl.identifier, exp_val, decl.declType, decl.keyword, decl);
+
+        if(let Some(curRecords) <- curRecords){
+            // 重复定义
+            if(curRecords.findInCurRecords(varName)){
+                throw CjcjRuntimeErrorWithLocation(ErrorCode.DUPLICATED_DEF, "试图在同一静态作用域内定义同名变量", decl);
+            } else {
+                curRecords.addRecord(varName, newRecord);
+            }
+        }
+
+        var ret = Value.VUnit;
+        return ret;
     }
 
     public open override func visit(_: FuncParam): Value {
