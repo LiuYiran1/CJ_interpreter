@@ -4,6 +4,7 @@ import cjcj.visitor.*
 import cjcj.scanner.TokenKind
 import cjcj.scanner.Token
 import std.convert.*
+import std.collection.*
 
 class Lab1TodoException <: Exception {
     public init(message: String) {
@@ -25,6 +26,8 @@ public open class Evaluator <: Visitor<Value> {
     //
     // private let context = ...
     // private let static_scope = ...
+    let recordStack = ArrayStack<ActivationRecord>()
+    var curRecord : ?ActivationRecord = None
 
     public open override func visit(_: Program): Value {
         throw UnsupportedException("Unimplemented method for Visitor : Program")
@@ -78,6 +81,17 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(block: Block): Value {
+        // 加入活动记录
+        var newRecord : ActivationRecord
+        if(recordStack.isEmpty()){
+            newRecord = BlockActivationRecord(None, None, None)
+        } else {
+            var last = recordStack.peek()
+            newRecord = BlockActivationRecord(None, last, None);
+        }
+        recordStack.add(newRecord)
+        curRecord = newRecord
+
         var ret = Value.VUnit
         for (stmt in block.nodes.iterator()) {
             ret = stmt.traverse(this)
@@ -106,7 +120,9 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(decl: VarDecl): Value {
-        throw Lab1TodoException("Variable Declaration Evaluation Not Implemented")
+        // String varName = decl.
+        var ret = Value.VUnit
+        return ret
     }
 
     public open override func visit(_: FuncParam): Value {
