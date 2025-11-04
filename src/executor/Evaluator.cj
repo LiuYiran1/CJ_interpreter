@@ -60,41 +60,152 @@ public open class Evaluator <: Visitor<Value> {
         }
     }
 
-    private func calcIntConst(a : Int64, b : Int64, op : TokenKind, node : Node) : Int64{
-        let max = Int64.Max;
-        let min = Int64.Min;
-        match(op){
-            case TokenKind.ADD => 
-                    if ((b > 0 && a > max - b) || (b < 0 && a < min - b)) {
-                        // 溢出
-                        throw CjcjRuntimeErrorWithLocation(ErrorCode.ADD_OVERFLOW, "整数加法结果超出 `Int64` 表示范围", fromWhere: Node)
-                    }
-                    return a + b
+    private func calcIntConstInt(a : Int64, b : Int64, op : TokenKind, node : Node) : Int64 {
+        let max = Int64.Max
+        let min = Int64.Min
+
+        match(op) {
+            case TokenKind.ADD =>
+                if ((b > 0 && a > max - b) || (b < 0 && a < min - b)) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.ADD_OVERFLOW,
+                        "整数加法结果超出 `Int64` 表示范围",
+                        node
+                    )
+                }
+                return a + b
+
             case TokenKind.SUB =>
-            case TokenKind.MUL => 
+                if ((b < 0 && a > max + b) || (b > 0 && a < min + b)) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.SUB_OVERFLOW,
+                        "整数减法结果超出 `Int64` 表示范围",
+                        node
+                    )
+                }
+                return a - b
+
+            case TokenKind.MUL =>
+                // 零乘任意数都安全
+                if (a != 0 && (a == -1 && b == min || b == -1 && a == min || a > max / b || a < min / b)) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.MUL_OVERFLOW,
+                        "整数乘法结果超出 `Int64` 表示范围",
+                        node
+                    )
+                }
+                return a * b
+
             case TokenKind.DIV =>
-            case TokenKind.MOD =>         
+                // 检查除零
+                if (b == 0) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.DIV_BY_ZERO,
+                        "整数除法除数不能为 0",
+                        node
+                    )
+                }
+                return a / b
+
+            case TokenKind.MOD =>
+                if (b == 0) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.MOD_BY_ZERO,
+                        "取模运算除数不能为 0",
+                        node
+                    )
+                }
+                return a % b
+
+            case TokenKind.EXP =>
+                if (b < 0) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.EXP_NEGATIVE_POWER,
+                        "指数为负数的幂运算不被支持",
+                        node
+                    )
+                }
+                var result: Int64 = 1
+                var base = a
+                var exponent = b
+                while (exponent > 0) {
+                    if (exponent % 2 == 1) {
+                        if (result != 0 && (result > max / base || result < min / base)) {
+                            throw CjcjRuntimeErrorWithLocation(
+                                ErrorCode.EXP_OVERFLOW,
+                                "幂运算结果超出 `Int64` 表示范围",
+                                node
+                            )
+                        }
+                        result *= base
+                    }
+                    exponent = exponent / 2
+                    if (exponent > 0) {
+                        if (base != 0 && (base > max / base || base < min / base)) {
+                            throw CjcjRuntimeErrorWithLocation(
+                                ErrorCode.EXP_OVERFLOW,
+                                "幂运算结果超出 `Int64` 表示范围",
+                                node
+                            )
+                        }
+                        base *= base
+                    }
+                }
+                return result
+
+            case _ => throw UnhandledTokenKind("Unhandled binary int int int");
         }
     }
 
-    private func calcStrIntConst(a : String, b : Int64, op : TokenKind, node : Node) : String{
+
+    private func calcIntConstBool(a: Int64, b: Int64, op: TokenKind, node: Node) : Bool {
+        match(op) {
+            case TokenKind.LT => return a < b
+            case TokenKind.LE => return a <= b
+            case TokenKind.GT => return a > b
+            case TokenKind.GE => return a >= b
+            case TokenKind.EQUAL => return a == b
+            case TokenKind.NOTEQ => return a != b
+            case _ => throw UnhandledTokenKind("Unhandled binary int int bool");
+        }
+    }
+
+    private func calcStringConstBool(a: String, b: String, op: TokenKind, node: Node) : Bool {
+        match(op) {
+            case TokenKind.LT => return a < b          // 字典序
+            case TokenKind.LE => return a <= b
+            case TokenKind.GT => return a > b
+            case TokenKind.GE => return a >= b
+            case TokenKind.EQUAL => return a == b
+            case TokenKind.NOTEQ => return a != b
+            case _ => 
+                throw CjcjRuntimeErrorWithLocation(ErrorCode.CMP_TYPE_MISMATCH, 
+                    "字符串比较操作符不匹配", node)
+        }
+    }
+
+    private func calcBoolConstBool(a: Bool, b: Bool, op: TokenKind, node: Node) : Bool {
+        match(op) {
+            case TokenKind.AND => return a && b       // 短路在外层逻辑处理
+            case TokenKind.OR  => return a || b
+            case TokenKind.EQUAL  => return a == b
+            case TokenKind.NOTEQ  => return a != b
+            case _ =>
+                throw CjcjRuntimeErrorWithLocation(ErrorCode.AND_TYPE_MISMATCH, 
+                    "布尔运算操作符不匹配", node)
+        }
+    }
+
+
+    private func calcStrIntConstString(a : String, b : Int64, op : TokenKind, node : Node) : String{
         return a * b;
     }
 
-    private func calcStringConst(a : String, b : String, op : TokenKind, node : Node) : Int64{
-        let max = Int64.Max;
-        let min = Int64.Min;
+    private func calcStringConstString(a : String, b : String, op : TokenKind, node : Node) : String{
         match(op){
-            case TokenKind.ADD =>
-            case TokenKind.SUB =>
-            case TokenKind.MUL => 
-            case TokenKind.DIV =>
-            case TokenKind.MOD =>         
+            case TokenKind.ADD => return a + b;
+            case _ => throw UnhandledTokenKind("Unhandled binary str str str");
         }
-    }
-
-    private func calcBoolConst(a : Bool, b : Bool, op : TokenKind, node : Node){
-
     }
 
     public open override func visit(expr: BinaryExpr): Value {
@@ -118,54 +229,101 @@ public open class Evaluator <: Visitor<Value> {
         let right = expr.right.traverse(this)
         try {
             match (expr.oper.kind) {
-                case TokenKind.ADD |
-                     TokenKind.GT | TokenKind.GE | TokenKind.LT | TokenKind.LE => match ((left, right)) {
-                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
-                    case (VString(a), VString(b)) => return Value.from(calcStringConst(a, b, expr.oper.kind, expr))
+                case TokenKind.ADD => match ((left, right)) {
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConstInt(a, b, expr.oper.kind, expr))
+                    case (VString(a), VString(b)) => return Value.from(calcStringConstString(a, b, expr.oper.kind, expr))
                     case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
                         "cannot op left = ${left}, right = ${right}", expr)
                 }
                 case TokenKind.SUB | TokenKind.DIV | TokenKind.MOD | TokenKind.EXP => match ((left, right)) {
-                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConstInt(a, b, expr.oper.kind, expr))
                     case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
                         "cannot op left = ${left}, right = ${right}", expr)
                 }
                 case TokenKind.MUL => match ((left, right)) {
-                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
-                    case (VString(a), VInteger(b)) => return Value.from(calcStrIntConst(a, b, expr.oper.kind, expr))
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConstInt(a, b, expr.oper.kind, expr))
+                    case (VString(a), VInteger(b)) => return Value.from(calcStrIntConstString(a, b, expr.oper.kind, expr))
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}, right = ${right}", expr)
+                }
+                case TokenKind.GT | TokenKind.GE | TokenKind.LT | TokenKind.LE => match ((left, right)) {
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConstBool(a, b, expr.oper.kind, expr))
+                    case (VString(a), VString(b)) => return Value.from((calcStringConstBool(a, b, expr.oper.kind, expr)))
                     case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
                         "cannot op left = ${left}, right = ${right}", expr)
                 }
                 case TokenKind.EQUAL | TokenKind.NOTEQ => match((left, right)){
-                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
-                    case (VString(a), VString(b)) => return Value.from(calcStringConst(a, b, expr.oper.kind, expr))
-                    case (VBoolean(a), VBoolean(b)) => return Value.from(calcBoolConst(a, b, expr.oper.kind, expr))
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConstBool(a, b, expr.oper.kind, expr))
+                    case (VString(a), VString(b)) => return Value.from(calcStringConstBool(a, b, expr.oper.kind, expr))
+                    case (VBoolean(a), VBoolean(b)) => return Value.from(calcBoolConstBool(a, b, expr.oper.kind, expr))
                     case (VUnit, Vunit) => return Value.from(true);
                     case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
                         "cannot op left = ${left}, right = ${right}", expr)
                 }
                 case TokenKind.AND | TokenKind.OR => match((left, right)){
-                    case (VBoolean(a), VBoolean(b)) => return Value.from(calcBoolConst(a, b, expr.oper.kind, expr))
+                    case (VBoolean(a), VBoolean(b)) => return Value.from(calcBoolConstBool(a, b, expr.oper.kind, expr))
                     case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
                         "cannot op left = ${left}, right = ${right}", expr)
                 }
-                case _ => throw Lab1TodoException("Unimplemented Binary Operator `${expr.oper.kind}`")
+                case _ => throw UnhandledTokenKind("Unimplemented Binary Operator `${expr.oper.kind}`")
             }
         } catch (e: OverflowException) {
             match (e.message) {
                 case "add" => throw CjcjRuntimeErrorWithLocation(ErrorCode.ADD_OVERFLOW,
                     "overflow add: left = ${left}, right = ${right}", expr)
-                case _ => throw Lab1TodoException("You need to handle overflow of ${e.message}")
+                case _ => throw Exception("You need to handle overflow of ${e.message}")
             }
         }
     }
 
-    public open override func visit(expr: UnaryExpr): Value {
-        throw Lab1TodoException("Unary Expression Evaluation Not Implemented")
+public open override func visit(expr: UnaryExpr): Value {
+    // 先求出操作数的值
+    let operand = expr.right.traverse(this)
+
+    match(expr.oper.kind) {
+        // 取负
+        case TokenKind.SUB =>  
+            match(operand) {
+                case Value.VInteger(i) =>
+                    // 检查溢出：-Int64.Min 会溢出
+                    if (i == Int64.Min) {
+                        throw CjcjRuntimeErrorWithLocation(
+                            ErrorCode.NEG_OVERFLOW,
+                            "整数取负溢出",
+                            expr
+                        )
+                    }
+                    return Value.from(-i)
+                case _ =>
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.NEG_TYPE_MISMATCH,
+                        "一元负号运算的类型不是 Int64",
+                        expr
+                    )
+            }
+
+        // 逻辑非
+        case TokenKind.NOT =>
+            match(operand) {
+                case Value.VBoolean(b) =>
+                    return Value.from(!b)
+                case _ =>
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.NOT_TYPE_MISMATCH,
+                        "一元逻辑非运算的类型不是 Bool",
+                        expr
+                    )
+            }
+
+        // 其他未实现操作符
+        case _ =>
+            throw UnhandledTokenKind("Unary operation not supported yet: ${expr.oper.kind}")
     }
+}
+
 
     public open override func visit(par: ParenExpr): Value {
-        throw Lab1TodoException("Parenthesized Expression Evaluation Not Implemented")
+        return par.parenthesizedExpr.traverse(this)
     }
 
     public open override func visit(lit: LitConstExpr): Value {
@@ -173,22 +331,31 @@ public open class Evaluator <: Visitor<Value> {
             case TokenKind.INTEGER_LITERAL => return Value.from(Int64.parse(lit.literal.value));
             case TokenKind.STRING_LITERAL => return Value.from(lit.literal.value);
             case TokenKind.BOOL_LITERAL => return Value.from(Bool.parse(lit.literal.value));
-            case _ => throw UnhandledTokenKind(lit.literal.kind.toString() + " in LitConstExpr");    
+            case TokenKind.UNIT_LITERAL => return Value.VUnit; // 不用这个的时候在while中使用break会报错？？？
+            case _ => throw UnhandledTokenKind(lit.literal.kind.toString() + " in LitConstExpr && in line: ${getPosition(lit).line}");    
         }
-
-
-
     }
 
     public open override func visit(expr: AssignExpr): Value {
-        throw Lab1TodoException("Assignment Expression Evaluation Not Implemented")
+        let left_name: String = match (expr.left) {
+            case ref: RefExpr => ref.identifier.value
+            case _ => throw UnhandledTokenKind("赋值表达式左边不太对啊")
+    }
+        let right = expr.right.traverse(this);
+        if (let Some(curRecords) <- curRecords) {
+            curRecords.setStaticRecord(left_name, right, expr);
+        } else {
+            throw Exception();
+        }
+
+        return Value.VUnit;
     }
 
     public open override func visit(ref: RefExpr): Value {
         match(ref.identifier.kind){
             case TokenKind.IDENTIFIER => 
                 if (let Some(curRecords) <- curRecords) {
-                    return curRecords.getRecordValue(ref.identifier.value, ref);
+                    return curRecords.getStaticValue(ref.identifier.value, ref);
                 }else{
                     throw Exception();
                 }
@@ -196,6 +363,7 @@ public open class Evaluator <: Visitor<Value> {
         }
     }
 
+// TODO : problem：是否要先遍历一次ast把access link构建好？
     public open override func visit(block: Block): Value {
         // 加入活动记录
         var newRecords : ActivationRecords
@@ -203,7 +371,7 @@ public open class Evaluator <: Visitor<Value> {
             newRecords = BlockActivationRecords(None, None, None)
         } else {
             var last = recordsStack.peek()
-            newRecords = BlockActivationRecords(None, last, None);
+            newRecords = BlockActivationRecords(None, last, last);
         }
         recordsStack.add(newRecords)
         curRecords = newRecords
@@ -215,12 +383,47 @@ public open class Evaluator <: Visitor<Value> {
         return ret
     }
 
+// 这里 IfExpr 好像和手册里的不太一样，手册中的 4.5
     public open override func visit(expr: IfExpr): Value {
-        throw Lab1TodoException("If Expression Evaluation Not Implemented")
+        var cond : Value = expr.condition.traverse(this);
+        match(cond){
+            case VBoolean(b) => 
+                if(b){
+                    return expr.ifBlock.traverse(this);
+                } else {
+                    return expr.elseBranch.traverse(this);
+                }
+            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.IF_TYPE_MISMATCH,
+                "If 条件表达式的类型不是 Bool", expr);
+        }
     }
 
     public open override func visit(expr: WhileExpr): Value {
-        throw Lab1TodoException("While Expression Evaluation Not Implemented")
+        var cond : Value = expr.condition.traverse(this);
+        match(cond){
+            case VBoolean(b) => 
+                var the_cond : Bool = b;
+                while(the_cond){
+                    try{
+                        expr.block.traverse(this);
+                    } catch(e : CjcjRuntimeErrorWithLocation){
+                        match(e.code){
+                            case ErrorCode.BREAK_OUTSIDE_LOOP => break;
+                            case ErrorCode.CONTINUE_OUTSIDE_LOOP => continue;
+                            case _ => throw e;
+                        }
+                    }
+                    cond = expr.condition.traverse(this);
+                    match(cond){
+                        case VBoolean(nb) => the_cond = nb;
+                        case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.WHILE_TYPE_MISMATCH,
+                            "While 条件表达式的类型不是 Bool", expr);
+                    }
+                }
+                return Value.VUnit;
+            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.WHILE_TYPE_MISMATCH,
+                "While 条件表达式的类型不是 Bool", expr);
+        }
     }
 
     public open override func visit(call: CallExpr): Value {
@@ -231,7 +434,17 @@ public open class Evaluator <: Visitor<Value> {
         throw UnsupportedException("Unimplemented method for Visitor : Return Expression")
     }
 
+// 这个想法不错啊，故意抛出错误，在while块中catch
     public open override func visit(jmp: JumpExpr): Value {
+        match(jmp.keyword.kind){
+            case TokenKind.BREAK =>
+                throw CjcjRuntimeErrorWithLocation(ErrorCode.BREAK_OUTSIDE_LOOP,
+                    "在非循环体内使用 `break`", jmp);
+            case TokenKind.CONTINUE =>
+                throw CjcjRuntimeErrorWithLocation(ErrorCode.CONTINUE_OUTSIDE_LOOP,
+                    "在非循环体内使用 `continue`", jmp);
+            case _ => throw UnhandledTokenKind("Unhandled Jump Expression Keyword: ${jmp.keyword.kind}");
+        }
         throw Lab1TodoException("Jump Expression Evaluation Not Implemented")
     }
 
@@ -244,6 +457,7 @@ public open class Evaluator <: Visitor<Value> {
                 case u: UnaryExpr => exp_val = u.traverse(this)
                 case l: LitConstExpr => exp_val = l.traverse(this) // 直接的字面量
                 case p: ParenExpr => exp_val = p.traverse(this) // 括号表达式
+                case r: RefExpr => exp_val = r.traverse(this) // 变量引用
                 case _ => throw UnsupportedException("不支持的 Expr 类型")
             }
         }

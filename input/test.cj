@@ -1,5 +1,3 @@
 main() {
-    var a : String = true + false;;
-    var a;
-    a
+  false && (1/0)  // 不应该计算1/0，所以不会报除零错误
 }
