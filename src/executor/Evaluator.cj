@@ -113,7 +113,7 @@ public open class Evaluator <: Visitor<Value> {
                     case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
                         "cannot op left = ${left}", expr)
                 }
-            case _ => 
+            case _ => ()
         }
         let right = expr.right.traverse(this)
         try {
