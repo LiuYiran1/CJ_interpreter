@@ -41,16 +41,113 @@ public open class Evaluator <: Visitor<Value> {
 
     // This is just an example of how to implement the visit method for BinaryExpr.
     // You may need to modify, split, or completely rewrite it depending on your design.
+
+    private func getTypeMisErrorCode(op : TokenKind) : ErrorCode{
+        match(op){
+            case TokenKind.ADD => return ErrorCode.ADD_TYPE_MISMATCH;
+            case TokenKind.SUB => return ErrorCode.SUB_TYPE_MISMATCH;
+            case TokenKind.MUL => return ErrorCode.MUL_TYPE_MISMATCH;
+            case TokenKind.DIV => return ErrorCode.DIV_TYPE_MISMATCH;
+            case TokenKind.MOD => return ErrorCode.MOD_TYPE_MISMATCH;
+            case TokenKind.EXP => return ErrorCode.EXP_TYPE_MISMATCH;
+            case TokenKind.GT | TokenKind.GE
+                | TokenKind.LT | TokenKind.LE  => return ErrorCode.CMP_TYPE_MISMATCH
+            case TokenKind.EQUAL => return ErrorCode.EQ_TYPE_MISMATCH;
+            case TokenKind.NOTEQ => return ErrorCode.NEQ_TYPE_MISMATCH;
+            case TokenKind.AND => return ErrorCode.AND_TYPE_MISMATCH;
+            case TokenKind.OR => return ErrorCode.OR_TYPE_MISMATCH;
+            case _ => throw UnhandledTokenKind("in getTypeMisErrorCode");
+        }
+    }
+
+    private func calcIntConst(a : Int64, b : Int64, op : TokenKind, node : Node) : Int64{
+        let max = Int64.Max;
+        let min = Int64.Min;
+        match(op){
+            case TokenKind.ADD => 
+                    if ((b > 0 && a > max - b) || (b < 0 && a < min - b)) {
+                        // 溢出
+                        throw CjcjRuntimeErrorWithLocation(ErrorCode.ADD_OVERFLOW, "整数加法结果超出 `Int64` 表示范围", fromWhere: Node)
+                    }
+                    return a + b
+            case TokenKind.SUB =>
+            case TokenKind.MUL => 
+            case TokenKind.DIV =>
+            case TokenKind.MOD =>         
+        }
+    }
+
+    private func calcStrIntConst(a : String, b : Int64, op : TokenKind, node : Node) : String{
+        return a * b;
+    }
+
+    private func calcStringConst(a : String, b : String, op : TokenKind, node : Node) : Int64{
+        let max = Int64.Max;
+        let min = Int64.Min;
+        match(op){
+            case TokenKind.ADD =>
+            case TokenKind.SUB =>
+            case TokenKind.MUL => 
+            case TokenKind.DIV =>
+            case TokenKind.MOD =>         
+        }
+    }
+
+    private func calcBoolConst(a : Bool, b : Bool, op : TokenKind, node : Node){
+
+    }
+
     public open override func visit(expr: BinaryExpr): Value {
         let left = expr.left.traverse(this)
+        // && || 短路
+        match(expr.oper.kind){
+            case TokenKind.AND =>
+                match(left){
+                    case VBoolean(b) => if(!b) {return Value.from(false)}
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}", expr)
+                }
+            case TokenKind.OR =>
+                match(left){
+                    case VBoolean(b) => if(b) {return Value.from(true)}
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}", expr)
+                }
+            case _ => 
+        }
         let right = expr.right.traverse(this)
         try {
             match (expr.oper.kind) {
-                case TokenKind.ADD => match ((left, right)) {
-                    case (VInteger(a), VInteger(b)) => Value.from(a + b)
-                    case (VString(a), VString(b)) => Value.from(a + b)
-                    case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.ADD_TYPE_MISMATCH,
-                        "cannot add left = ${left}, right = ${right}", expr)
+                case TokenKind.ADD |
+                     TokenKind.GT | TokenKind.GE | TokenKind.LT | TokenKind.LE => match ((left, right)) {
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
+                    case (VString(a), VString(b)) => return Value.from(calcStringConst(a, b, expr.oper.kind, expr))
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}, right = ${right}", expr)
+                }
+                case TokenKind.SUB | TokenKind.DIV | TokenKind.MOD | TokenKind.EXP => match ((left, right)) {
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}, right = ${right}", expr)
+                }
+                case TokenKind.MUL => match ((left, right)) {
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
+                    case (VString(a), VInteger(b)) => return Value.from(calcStrIntConst(a, b, expr.oper.kind, expr))
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}, right = ${right}", expr)
+                }
+                case TokenKind.EQUAL | TokenKind.NOTEQ => match((left, right)){
+                    case (VInteger(a), VInteger(b)) => return Value.from(calcIntConst(a, b, expr.oper.kind, expr))
+                    case (VString(a), VString(b)) => return Value.from(calcStringConst(a, b, expr.oper.kind, expr))
+                    case (VBoolean(a), VBoolean(b)) => return Value.from(calcBoolConst(a, b, expr.oper.kind, expr))
+                    case (VUnit, Vunit) => return Value.from(true);
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}, right = ${right}", expr)
+                }
+                case TokenKind.AND | TokenKind.OR => match((left, right)){
+                    case (VBoolean(a), VBoolean(b)) => return Value.from(calcBoolConst(a, b, expr.oper.kind, expr))
+                    case _ => throw CjcjRuntimeErrorWithLocation(getTypeMisErrorCode(expr.oper.kind),
+                        "cannot op left = ${left}, right = ${right}", expr)
                 }
                 case _ => throw Lab1TodoException("Unimplemented Binary Operator `${expr.oper.kind}`")
             }
@@ -73,7 +170,9 @@ public open class Evaluator <: Visitor<Value> {
 
     public open override func visit(lit: LitConstExpr): Value {
         match (lit.literal.kind) {
-            case TokenKind.INTEGER_LITERAL => return Value.from(Int64.parse(lit.literal.value))
+            case TokenKind.INTEGER_LITERAL => return Value.from(Int64.parse(lit.literal.value));
+            case TokenKind.STRING_LITERAL => return Value.from(lit.literal.value);
+            case TokenKind.BOOL_LITERAL => return Value.from(Bool.parse(lit.literal.value));
             case _ => throw UnhandledTokenKind(lit.literal.kind.toString() + " in LitConstExpr");    
         }
 
