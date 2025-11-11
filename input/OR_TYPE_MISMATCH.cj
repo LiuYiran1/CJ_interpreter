@@ -1,4 +1,4 @@
-main(){
+main() {
     var a = 9
     var b = a == 9
     var c = false

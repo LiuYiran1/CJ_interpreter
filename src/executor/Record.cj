@@ -21,7 +21,7 @@ public class Record {
         this.value = _value
         if (let Some(_recordTypeNode) <- _recordTypeNode) {
             this.recordType = _recordTypeNode.typeName.kind
-            println(recordType.toString());
+        //println(recordType.toString());
         } else {
             this.recordType = None
         }

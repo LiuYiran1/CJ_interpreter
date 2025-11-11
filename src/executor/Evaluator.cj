@@ -85,8 +85,7 @@ public open class Evaluator <: Visitor<Value> {
                 return a - b
 
             case TokenKind.MUL =>
-                // 零乘任意数都安全
-                if (a != 0 && (a == -1 && b == min || b == -1 && a == min || a > max / b || a < min / b)) {
+                if ((a != 0 && b != 0) && (a == -1 && b == min || b == -1 && a == min || a > max / b || a < min / b)) {
                     throw CjcjRuntimeErrorWithLocation(
                         ErrorCode.MUL_OVERFLOW,
                         "整数乘法结果超出 `Int64` 表示范围",
@@ -129,7 +128,7 @@ public open class Evaluator <: Visitor<Value> {
                 var exponent = b
                 while (exponent > 0) {
                     if (exponent % 2 == 1) {
-                        if (result != 0 && (result > max / base || result < min / base)) {
+                        if (base != 0 && result != 0 && (result > max / base || result < min / base)) {
                             throw CjcjRuntimeErrorWithLocation(
                                 ErrorCode.EXP_OVERFLOW,
                                 "幂运算结果超出 `Int64` 表示范围",
@@ -276,16 +275,17 @@ public open class Evaluator <: Visitor<Value> {
     public open override func visit(expr: UnaryExpr): Value {
         // 这里要对INT_MIN取负做出特殊处理
         match (expr.right) {
-            case exp: LitConstExpr => if(expr.oper.kind == TokenKind.SUB && exp.literal.value == "9223372036854775808"){
-                        throw CjcjRuntimeErrorWithLocation(
-                            ErrorCode.NEG_OVERFLOW,
-                            "整数取负溢出",
-                            expr
-                        )
-            }
+            case exp: LitConstExpr =>
+                if (expr.oper.kind == TokenKind.SUB && exp.literal.value == "9223372036854775808") {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.NEG_OVERFLOW,
+                        "整数取负溢出",
+                        expr
+                    )
+                }
             case _ => ()
         }
-        
+
         // 先求出操作数的值
         let operand = expr.right.traverse(this)
 
@@ -387,7 +387,7 @@ public open class Evaluator <: Visitor<Value> {
         for (stmt in block.nodes.iterator()) {
             ret = stmt.traverse(this)
         }
-        if(let Some(last) <- recordsStack.remove()){
+        if (let Some(last) <- recordsStack.remove()) {
             curRecords = last
         }
         //println(recordsStack.size)
@@ -412,8 +412,8 @@ public open class Evaluator <: Visitor<Value> {
     public open override func visit(expr: WhileExpr): Value {
         var cond: Value = expr.condition.traverse(this);
         // 记录while外部的record
-        var outterWhileRecordsNum : Int64 = recordsStack.size;
-        
+        var outterWhileRecordsNum: Int64 = recordsStack.size;
+
         match (cond) {
             case VBoolean(b) =>
                 var the_cond: Bool = b;
@@ -423,18 +423,18 @@ public open class Evaluator <: Visitor<Value> {
                     } catch (e: CjcjRuntimeErrorWithLocation) {
                         match (e.code) {
                             // 注意这里break和continue会导致出块，而出块需要更新recordsStack和curRecords,就是将块直接更新到while外部的块
-                            case ErrorCode.BREAK_OUTSIDE_LOOP => 
-                                                                while (outterWhileRecordsNum < recordsStack.size){
-                                                                    recordsStack.remove()
-                                                                }
-                                                                curRecords = recordsStack.peek()
-                                                                break; // break;
+                            case ErrorCode.BREAK_OUTSIDE_LOOP =>
+                                while (outterWhileRecordsNum < recordsStack.size) {
+                                    recordsStack.remove()
+                                }
+                                curRecords = recordsStack.peek()
+                                break; // break;
                             case ErrorCode.CONTINUE_OUTSIDE_LOOP =>
-                                                                while (outterWhileRecordsNum < recordsStack.size){
-                                                                    recordsStack.remove()
-                                                                }
-                                                                curRecords = recordsStack.peek()
-                                                                 () // continue;
+                                while (outterWhileRecordsNum < recordsStack.size) {
+                                    recordsStack.remove()
+                                }
+                                curRecords = recordsStack.peek()
+                                () // continue;
                             case _ => throw e;
                         }
                     }
@@ -475,14 +475,7 @@ public open class Evaluator <: Visitor<Value> {
         var exp_val: ?Value = None;
 
         if (let Some(exp) <- decl.initializer) {
-            match (exp) {
-                case b: BinaryExpr => exp_val = b.traverse(this)
-                case u: UnaryExpr => exp_val = u.traverse(this)
-                case l: LitConstExpr => exp_val = l.traverse(this) // 直接的字面量
-                case p: ParenExpr => exp_val = p.traverse(this) // 括号表达式
-                case r: RefExpr => exp_val = r.traverse(this) // 变量引用
-                case _ => throw UnsupportedException("不支持的 Expr 类型")
-            }
+            exp_val = exp.traverse(this)
         }
 
         var varName: String = decl.identifier.value;

@@ -1,9 +1,9 @@
-main(){
+main() {
     var a = 1
-    while(true){
+    while (true) {
         a = a + 1
         var b = a
-        if(b > 1){
+        if (b > 1) {
             break
         }
     }
