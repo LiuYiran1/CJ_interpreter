@@ -157,5 +157,4 @@ public class FuncType <: TypeNode {
         printer.printList("paramTypes", paramTypes_)
         printer.printObject("returnType", returnType_)
     }
-
 }

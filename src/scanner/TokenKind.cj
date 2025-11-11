@@ -236,7 +236,7 @@ public enum TokenKind <: ToString {
     | /*  "()"               */
         ARROW
     | /*  "->"               */
-    ILLEGAL
+        ILLEGAL
 
     public func toString(): String {
         return match (this) {

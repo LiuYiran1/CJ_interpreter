@@ -6,10 +6,10 @@ import cjcj.visitor.*
 public abstract open class ActivationRecords {
     public var name: ?String
     public var controlLink: ?ActivationRecords // 调用链
-    public var accessLink: ?ActivationRecords  // 静态链（闭包/静态作用域）
+    public var accessLink: ?ActivationRecords // 静态链（闭包/静态作用域）
     public let items: HashMap<String, Record>
 
-    public init(_name: ?String, _controlLink: ?ActivationRecords, _accessLink: ?ActivationRecords){
+    public init(_name: ?String, _controlLink: ?ActivationRecords, _accessLink: ?ActivationRecords) {
         this.name = _name
         this.controlLink = _controlLink
         this.accessLink = _accessLink
@@ -48,9 +48,9 @@ public abstract open class ActivationRecords {
 
     /** ---------------- 静态作用域查找 ---------------- */
     public func getStaticRecord(name: String, node: Node): Record {
-        if(items.contains(name)){
+        if (items.contains(name)) {
             return items[name]
-        } else if(let Some(last) <- accessLink){
+        } else if (let Some(last) <- accessLink) {
             return last.getStaticRecord(name, node)
         } else {
             throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "静态作用域下未定义变量", node)
@@ -59,7 +59,7 @@ public abstract open class ActivationRecords {
 
     public func getStaticValue(name: String, node: Node): Value {
         var record: Record = this.getStaticRecord(name, node)
-        if(let Some(val) <- record.value){
+        if (let Some(val) <- record.value) {
             return val
         } else {
             throw CjcjRuntimeErrorWithLocation(ErrorCode.UNINITIALIZED_VAR, "静态作用域下未初始化变量", node)
@@ -67,9 +67,9 @@ public abstract open class ActivationRecords {
     }
 
     public func setStaticRecord(name: String, value: Value, node: Node): Unit {
-        if(items.contains(name)){
+        if (items.contains(name)) {
             items[name].updateValue(value, node)
-        } else if(let Some(last) <- accessLink){
+        } else if (let Some(last) <- accessLink) {
             last.setStaticRecord(name, value, node)
         } else {
             throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "静态作用域下未定义变量", node)
@@ -81,7 +81,7 @@ public abstract open class ActivationRecords {
         return items.contains(name)
     }
 
-    public func addRecord(name: String, record: Record){
+    public func addRecord(name: String, record: Record) {
         items.add(name, record)
     }
 }
