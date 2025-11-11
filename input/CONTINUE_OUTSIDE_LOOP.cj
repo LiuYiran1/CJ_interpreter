@@ -4,6 +4,6 @@ main(){
         a = a + 1
         continue
     }
-    //continue
-    println(a)
+    continue
+    a
 }

@@ -412,7 +412,7 @@ public open class Evaluator <: Visitor<Value> {
                     } catch (e: CjcjRuntimeErrorWithLocation) {
                         match (e.code) {
                             case ErrorCode.BREAK_OUTSIDE_LOOP => break;
-                            case ErrorCode.CONTINUE_OUTSIDE_LOOP => continue;
+                            case ErrorCode.CONTINUE_OUTSIDE_LOOP => () // continue;
                             case _ => throw e;
                         }
                     }
