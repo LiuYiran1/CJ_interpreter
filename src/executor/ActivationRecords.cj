@@ -84,4 +84,11 @@ public abstract open class ActivationRecords {
     public func addRecord(name: String, record: Record) {
         items.add(name, record)
     }
+
+    public func getName() : String{
+        if(let Some(name) <- this.name){
+            return name
+        }
+        return "None"
+    }
 }

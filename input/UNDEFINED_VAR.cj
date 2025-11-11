@@ -3,7 +3,7 @@ main(){
     while(true){
         a = a + 1
         var b = a
-        if(b > 10){
+        if(b > 1){
             break
         }
     }

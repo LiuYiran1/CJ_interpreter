@@ -368,16 +368,18 @@ public open class Evaluator <: Visitor<Value> {
 
     // TODO : problem：是否要先遍历一次ast把access link构建好？
     // TODO : 小心！如果break和continue出块了要更新recordStack和curRecords
+    var id = 0;
     public open override func visit(block: Block): Value {
-        println(recordsStack.size)
+        //println(recordsStack.size)
         // 加入活动记录
         var newRecords: ActivationRecords
         if (recordsStack.isEmpty()) {
-            newRecords = BlockActivationRecords(None, None, None)
+            newRecords = BlockActivationRecords(id.toString(), None, None)
         } else {
             var last = recordsStack.peek()
-            newRecords = BlockActivationRecords(None, last, last)
+            newRecords = BlockActivationRecords(id.toString(), last, last)
         }
+        id++;
         recordsStack.add(newRecords)
         curRecords = newRecords
 
@@ -388,7 +390,7 @@ public open class Evaluator <: Visitor<Value> {
         if(let Some(last) <- recordsStack.remove()){
             curRecords = last
         }
-        println(recordsStack.size)
+        //println(recordsStack.size)
         return ret
     }
 
@@ -410,10 +412,7 @@ public open class Evaluator <: Visitor<Value> {
     public open override func visit(expr: WhileExpr): Value {
         var cond: Value = expr.condition.traverse(this);
         // 记录while外部的record
-        var outterWhileRecords : ActivationRecords;
-        if(let Some(curR) <- curRecords){
-            outterWhileRecords = curR;
-        }
+        var outterWhileRecordsNum : Int64 = recordsStack.size;
         
         match (cond) {
             case VBoolean(b) =>
@@ -424,18 +423,18 @@ public open class Evaluator <: Visitor<Value> {
                     } catch (e: CjcjRuntimeErrorWithLocation) {
                         match (e.code) {
                             // 注意这里break和continue会导致出块，而出块需要更新recordsStack和curRecords,就是将块直接更新到while外部的块
-                            case ErrorCode.BREAK_OUTSIDE_LOOP => break;
-                                                                while (let Some(last) <- recordsStack.remove()){
-                                                                    if(last == outterWhileRecords){
-
-                                                                    }
+                            case ErrorCode.BREAK_OUTSIDE_LOOP => 
+                                                                while (outterWhileRecordsNum < recordsStack.size){
+                                                                    recordsStack.remove()
                                                                 }
-                                                                println(recordsStack.size)
-                            case ErrorCode.CONTINUE_OUTSIDE_LOOP => () // continue;
-                                                                // if(let Some(last) <- recordsStack.remove()){
-                                                                //     curRecords = last
-                                                                // }
-                                                                // println(recordsStack.size)
+                                                                curRecords = recordsStack.peek()
+                                                                break; // break;
+                            case ErrorCode.CONTINUE_OUTSIDE_LOOP =>
+                                                                while (outterWhileRecordsNum < recordsStack.size){
+                                                                    recordsStack.remove()
+                                                                }
+                                                                curRecords = recordsStack.peek()
+                                                                 () // continue;
                             case _ => throw e;
                         }
                     }
