@@ -367,7 +367,9 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     // TODO : problem：是否要先遍历一次ast把access link构建好？
+    // TODO : 小心！如果break和continue出块了要更新recordStack和curRecords
     public open override func visit(block: Block): Value {
+        println(recordsStack.size)
         // 加入活动记录
         var newRecords: ActivationRecords
         if (recordsStack.isEmpty()) {
@@ -383,6 +385,10 @@ public open class Evaluator <: Visitor<Value> {
         for (stmt in block.nodes.iterator()) {
             ret = stmt.traverse(this)
         }
+        if(let Some(last) <- recordsStack.remove()){
+            curRecords = last
+        }
+        println(recordsStack.size)
         return ret
     }
 
@@ -403,6 +409,12 @@ public open class Evaluator <: Visitor<Value> {
 
     public open override func visit(expr: WhileExpr): Value {
         var cond: Value = expr.condition.traverse(this);
+        // 记录while外部的record
+        var outterWhileRecords : ActivationRecords;
+        if(let Some(curR) <- curRecords){
+            outterWhileRecords = curR;
+        }
+        
         match (cond) {
             case VBoolean(b) =>
                 var the_cond: Bool = b;
@@ -411,8 +423,19 @@ public open class Evaluator <: Visitor<Value> {
                         expr.block.traverse(this);
                     } catch (e: CjcjRuntimeErrorWithLocation) {
                         match (e.code) {
+                            // 注意这里break和continue会导致出块，而出块需要更新recordsStack和curRecords,就是将块直接更新到while外部的块
                             case ErrorCode.BREAK_OUTSIDE_LOOP => break;
+                                                                while (let Some(last) <- recordsStack.remove()){
+                                                                    if(last == outterWhileRecords){
+
+                                                                    }
+                                                                }
+                                                                println(recordsStack.size)
                             case ErrorCode.CONTINUE_OUTSIDE_LOOP => () // continue;
+                                                                // if(let Some(last) <- recordsStack.remove()){
+                                                                //     curRecords = last
+                                                                // }
+                                                                // println(recordsStack.size)
                             case _ => throw e;
                         }
                     }
