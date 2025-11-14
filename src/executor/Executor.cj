@@ -3,8 +3,6 @@ package cjcj.executor
 import cjcj.visitor.*
 
 public class Executor {
-    // In lab 1, you don't need to handle function declarations and calls.
-    // So we provide a very simple evaluation function here that only executes the `main` block.
     private func lab1SimpleEvaluation(program: Program): Int64 {
         let mainDecl = (program
             .decls
@@ -29,6 +27,11 @@ public class Executor {
             e.printStackTrace()
             1
         }
+    }
+
+    private func buildAccessLink(program: Program): Unit {
+        let linkBuilder = AccessLinkBuilder()
+        linkBuilder.buildAccessLink(program)
     }
 
     public func execute(program: Program): Int64 {

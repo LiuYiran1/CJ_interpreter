@@ -1,19 +1,12 @@
 main() {
-    var counter = 0
-    var output = "计数过程: "
-    
-    while (counter < 5) {
-        var temp_str = "步骤" + counter.toString() + ": "
-        
-        if (counter % 2 == 0) {
-            temp_str = temp_str + "偶数"
-        } else {
-            temp_str = temp_str + "奇数"
-        }
-        
-        output = output + temp_str + " "
-        counter = counter + 1
+    var a = 1
+    var b = 1
+    var i = 0
+    while (i < 10) {
+        let c = a
+        a = a + b
+        b = c
+        i = i + 1
     }
-    
-    output
+    b
 }

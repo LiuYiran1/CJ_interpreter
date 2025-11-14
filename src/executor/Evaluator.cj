@@ -18,29 +18,14 @@ class UnhandledTokenKind <: Exception {
     }
 }
 
-/** 
- * Evaluator Visitor
- *
- * Lab1 TODO: We have given the simplest form, each `Node` will return a `Value` after evaluation.
- * But is this sufficient? Do you need to add something new to handle ASTs that don't return a value?
- *
- * You may need to modify the member variables and/or generic parameters of the Evaluator class.
- */
+
 public open class Evaluator <: Visitor<Value> {
-    // How do you get and set the context when executing an expression?
-    // You might need to add some member variables to do this.
-    //
-    // private let context = ...
-    // private let static_scope = ...
-    let recordsStack = ArrayStack<ActivationRecords>()
+    let recordsStack = ArrayStack<ActivationRecords>() // 动态栈
     var curRecords: ?ActivationRecords = None
 
     public open override func visit(_: Program): Value {
         throw UnsupportedException("Unimplemented method for Visitor : Program")
     }
-
-    // This is just an example of how to implement the visit method for BinaryExpr.
-    // You may need to modify, split, or completely rewrite it depending on your design.
 
     private func getTypeMisErrorCode(op: TokenKind): ErrorCode {
         match (op) {

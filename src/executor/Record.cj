@@ -59,7 +59,7 @@ public class Record {
             return;
         }
         match (keyword.kind) {
-            case TokenKind.LET => throw CjcjRuntimeErrorWithLocation(ErrorCode.ASSGIN_IMMUT_VAR,
+            case TokenKind.LET => throw CjcjRuntimeErrorWithLocation(ErrorCode.ASSIGN_IMMUT_VAR,
                 "试图给 `let` 定义的不可变变量赋值", node);
             case TokenKind.VAR =>
                 // 类型检查
