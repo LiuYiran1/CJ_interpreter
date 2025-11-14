@@ -42,7 +42,7 @@ internal open class DeclParser {
             if (let Some(funcDef) <- functionDefinition()) {
                 return funcDef
             }
-        } catch (error: ParseError) {
+        } catch (error: ParseError | ConsumeError) {
             helper.synchronize()
         }
         None
@@ -50,7 +50,7 @@ internal open class DeclParser {
 
     private func unnamedParameterList(): ArrayList<FuncParam> {
         let parameters: ArrayList<FuncParam> = ArrayList()
-        let start: (Token, Int64) = (helper.previous(), helper.current - 1)
+        let start: (Token, Int64) = helper.previousNonNLTokenWithIndex()
         if (helper.check(TK.IDENTIFIER)) {
             do {
                 if (helper.check(TK.IDENTIFIER)) {
@@ -122,20 +122,21 @@ internal open class DeclParser {
             return ArrayList()
         }
         helper.consume(TK.LPAREN, "Expect '(' before function parameters", helper.current)
-        let start: (Token, Int64) = (helper.previous(), helper.current - 1)
+        let start: (Token, Int64) = helper.previousNonNLTokenWithIndex()
         helper.skipNL()
         let parameters: ArrayList<FuncParam> = ArrayList()
         try {
             parameters.add(all: unnamedParameterList())
             helper.skipNL()
-            helper.consume(TK.RPAREN, "Expect ')' after function parameters", helper.current)
-            helper.skipNL()
-        } catch (e: ConsumeError) {
-            if (helper.check(TK.LCURL)) {
-                reporter.pop()
-                reporter.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
-            } else {
-                helper.synchronizeBlockParenthesis(start[0], start[1])
+            try {
+                helper.consume(TK.RPAREN, "Expect ')' after function parameters", helper.current)
+                helper.skipNL()
+            } catch (e: ConsumeError) {
+                if (helper.check(TK.LCURL)) {
+                    helper.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
+                } else {
+                    helper.synchronizeBlockParenthesis(start[0], start[1])
+                }
             }
         } catch (e: ParseError) {
             helper.synchronizeBlockParenthesis(start[0], start[1])
@@ -195,22 +196,25 @@ internal open class DeclParser {
         try {
             helper.consume(TK.RCURL, "Expect '}' after block.", helper.current)
         } catch (e: ConsumeError) {
-            helper.synchronizeBlockRightCurl(start[0], start[1])
-            reporter.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
+            helper.trySynchronizeBlockRightCurlOrError(helper.peek(), start[0], start[1], helper.current)
         }
         Body(NodeIdManager.nextId(), decls)
     }
 
     public func classMemberDeclaration(): ?Decl {
         var decl: ?Decl = None
-        if (let Some(classInit) <- classInit()) {
-            decl = classInit
-        }
-        if (let Some(variableDeclaration) <- variableDeclaration()) {
-            decl = variableDeclaration
-        }
-        if (let Some(functionDefinition) <- functionDefinition()) {
-            decl = functionDefinition
+        try {
+            if (let Some(classInit) <- classInit()) {
+                decl = classInit
+            }
+            if (let Some(variableDeclaration) <- variableDeclaration()) {
+                decl = variableDeclaration
+            }
+            if (let Some(functionDefinition) <- functionDefinition()) {
+                decl = functionDefinition
+            }
+        } catch (e: ParseError | ConsumeError) {
+            helper.synchronize()
         }
         decl
     }
@@ -302,8 +306,7 @@ internal open class DeclParser {
         try {
             helper.consume(TK.RCURL, "Expect '}' after block.", helper.current)
         } catch (e: ConsumeError) {
-            helper.synchronizeBlockRightCurl(start[0], start[1])
-            reporter.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
+            helper.trySynchronizeBlockRightCurlOrError(helper.peek(), start[0], start[1], helper.current)
         }
 
         println("Error is found in body : ${reporter.empty}")
@@ -312,11 +315,14 @@ internal open class DeclParser {
     }
 
     private func interfaceMemberDeclaration(): ?Decl {
-        if (let Some(functionDefinition) <- functionDefinition()) {
-            functionDefinition
-        } else {
-            None
+        try {
+            if (let Some(functionDefinition) <- functionDefinition()) {
+                functionDefinition
+            }
+        } catch (e: ParseError | ConsumeError) {
+            helper.synchronize()
         }
+        None
     }
 
     private func superClass(): TypeNode {
@@ -329,24 +335,35 @@ internal open class DeclParser {
     }
 
     private func nodeType(id: NodeId, typeParameterName: ?Token): TypeNode {
-        if (helper.matches(TokenKind.LPAREN)) {
+        if (helper.matches(TK.LPAREN)) {
             // Function type, and maybe Tuple type in the future
             let paramTypes = ArrayList<TypeNode>()
-            if (!helper.matches(TokenKind.RPAREN)) {
+            if (!helper.matches(TK.RPAREN)) {
                 while (true) {
+                    helper.skipNL()
                     paramTypes.add(nodeType(NodeIdManager.nextId(), None))
-                    if (helper.matches(TokenKind.RPAREN)) {
+                    helper.skipNL()
+                    if (helper.matches(TK.RPAREN)) {
                         break
-                    } else if (!helper.matches(TokenKind.COMMA)) {
+                    } else if (!helper.matches(TK.COMMA)) {
                         helper.error(helper.peek(),
-                            "Expected ',' or ')' in function type, found '\u{001b}[31m${helper.peek().value}\u{001b}[0m'",
+                            "Expected new line, ',' or ')' in function type, found '\u{001b}[31m${helper.peek().value}\u{001b}[0m'",
                             helper.current)
                     }
                 }
             }
-            helper.consume(TokenKind.ARROW, "Expect '->' in function type", helper.current)
+            helper.skipNL()
+            helper.consume(TK.ARROW, "Expect '->' in function type", helper.current)
+            helper.skipNL()
             let returnType = nodeType(NodeIdManager.nextId(), None)
             FuncType(id, typeParameterName, paramTypes, returnType)
+        } else if (helper.matches(TK.UNIT_LITERAL)) {
+            // Function type with no parameters
+            helper.skipNL()
+            helper.consume(TK.ARROW, "Expect '->' in function type", helper.current)
+            helper.skipNL()
+            let returnType = nodeType(NodeIdManager.nextId(), None)
+            FuncType(id, typeParameterName, ArrayList<TypeNode>(), returnType)
         } else {
             let typeName = helper.advance()
             let typeParamName = typeParameterName.getOrDefault({=> typeName})
@@ -444,16 +461,18 @@ internal open class DeclParser {
 
         var nodes: ArrayList<Node> = ArrayList()
         helper.consume(TK.LCURL, "Expect '{' before block.", helper.current)
-        let start: (Token, Int64) = (helper.peek(), helper.current)
+        let start: (Token, Int64) = (helper.previous(), helper.current - 1)
         try {
             nodes = expressionOrDeclarations()
             helper.endStar()
             helper.consume(TK.RCURL, "Expect '}' after block.", helper.current)
-        } catch (e: ParseError) {
-            helper.synchronizeBlockRightCurl(start[0], start[1])
-            reporter.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
-        } catch (e: ConsumeError) {
-            reporter.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
+        } catch (e: ParseError | ConsumeError) {
+            // ParserError comes from expressionOrDeclaration(),
+            // and ConsumeError comes from helper.consume(...),
+            // both indicating something invalid appears in the block,
+            // which means the block is either missing a '}',
+            // or containing TLDs.
+            helper.trySynchronizeBlockRightCurlOrError(helper.peek(), start[0], start[1], helper.current)
         }
         Block(NodeIdManager.nextId(), nodes)
     }
@@ -482,23 +501,18 @@ internal open class DeclParser {
     }
 
     private func expressionOrDeclaration(): ?Node {
-        try {
-            if (let Some(decl) <- declaration()) {
-                return decl
-            }
-            if (let Some(expr) <- expression()) {
-                return expr
-            }
-            if (helper.matches(TKH.END) || helper.check(TK.RCURL)) {
-                return None
-            }
-            throw helper.error(helper.peek(),
-                "Expected expression or declaration inside block, found '\u{001b}[31m${helper.peek().value}\u{001b}[0m'",
-                helper.current)
-        } catch (e: ParseError) {
-            helper.synchronize()
+        if (let Some(decl) <- declaration()) {
+            return decl
         }
-        None
+        if (let Some(expr) <- expression()) {
+            return expr
+        }
+        if (helper.matches(TKH.END) || helper.check(TK.RCURL)) {
+            return None
+        }
+        throw helper.error(helper.peek(),
+            "Expected expression or declaration inside block, found '\u{001b}[31m${helper.peek().value}\u{001b}[0m'",
+            helper.current)
     }
 
     private func whileExpr(): ?Expr {
@@ -679,11 +693,13 @@ internal open class DeclParser {
                         helper.skipNL()
                     } while (helper.matches(TK.COMMA))
                 }
-                helper.consume(TK.RPAREN, "Expect ')' after arguments.", helper.current)
+                try {
+                    helper.consume(TK.RPAREN, "Expect ')' after arguments.", helper.current)
+                } catch (e: ConsumeError) {
+                    helper.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
+                }
             } catch (e: ParseError) {
                 helper.synchronizeCallParenthesis(start[0], start[1])
-            } catch (e: ConsumeError) {
-                reporter.unclosedDelimiterError(helper.peek(), start[0], start[1], helper.current)
             }
         } else if (!helper.matches(TK.UNIT_LITERAL)) {
             return None
@@ -827,7 +843,7 @@ internal open class DeclParser {
     private func additiveExpression(): ?Expr {
         if (let Some(e) <- multiplicativeExpression()) {
             var expr: Expr = e
-            while (helper.skipNLCompare(TKH.ADDITIVE_OPERATOR)) {
+            while (helper.matches(TK.SUB) || helper.skipNLCompare(TK.ADD)) {
                 let oper: Token = helper.previous()
                 helper.skipNL()
                 let right: Expr = expectExpression(multiplicativeExpression,
@@ -875,6 +891,11 @@ internal open class DeclParser {
         // the problem will be solved.
         if (helper.matches(TKH.PREFIX_UNARY_OPERATOR)) {
             let oper: Token = helper.previous()
+            if (oper.kind == TK.SUB && helper.matches(TK.INTEGER_LITERAL, TK.FLOAT_LITERAL)) {
+                let literal: Token = helper.previous()
+                return LitConstExpr(NodeIdManager.nextId(),
+                    Token(literal.kind, "-" + literal.value, oper.pos))
+            }
             let right: Expr = expectExpression(prefixUnaryExpression,
                 "Expected a postfixExpression after ${oper.value}, found '\u{001b}[31m${helper.peek().value}\u{001b}[0m'")
             return UnaryExpr(NodeIdManager.nextId(), oper, right)

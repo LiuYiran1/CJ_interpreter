@@ -89,10 +89,10 @@ public abstract class Decl <: Node & Equatable<Decl> {
 
     public open override func yamlPrint(printer: YamlPrinter): Unit {
         if (keyword.kind != TokenKind.ILLEGAL) {
-            printer.print("keyword", keyword.value)
+            printer.print("keyword", keyword)
         }
         if (keyword.kind != TokenKind.ILLEGAL) {
-            printer.print("identifier", identifier.value)
+            printer.print("identifier", identifier)
         }
         printer.printOptionalObject("declType", declType)
     }
@@ -248,6 +248,7 @@ public class FuncParam <: Decl {
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "FuncParam")
         super.yamlPrint(printer)
+        printer.print("name", name)
         printer.printObject("paramType", paramType)
     }
 

@@ -1,5 +1,8 @@
 package cjcj.prettyPrinter
 
+import cjcj.scanner.{Token, TokenKind}
+import std.ast.Position
+
 public interface YamlPrintable {
     func yamlPrint(printer: YamlPrinter): Unit
 }
@@ -67,9 +70,38 @@ public class YamlPrinter {
         )
     }
 
-    public func print(key: String, value: ToString): Unit {
+    public func print(key: String, token: Token): Unit {
+        print(key, token.value)
+        printPosition(token.pos)
+    }
+
+    public func print(key: String, value: ToString, enforceQuoting!: Bool = false): Unit {
+        let valueString = value.toString()
+        let formattedValue = if (!enforceQuoting && valueString.runes().all({r => r.isAsciiNumberOrLetter()})) {
+            valueString
+        } else if (valueString.contains("\n") || valueString.contains("\t") || valueString.contains("'")) {
+            '\"${valueString.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t").replace('"', '\\"')}\"'
+        } else {
+            "'${valueString}'"
+        }
+        printRaw(key, formattedValue)
+    }
+
+    public func printLiteral(key: String, literal: Token): Unit {
+        match (literal.kind) {
+            case TokenKind.STRING_LITERAL => print(key, literal.value, enforceQuoting: true)
+            case _ => print(key, literal.value)
+        }
+        printPosition(literal.pos)
+    }
+
+    private func printRaw(key: String, rawValue: String): Unit {
         printlnIfNeeded()
-        printer.append(key + ": " + value.toString())
+        printer.append("${key}: ${rawValue}")
+    }
+
+    private func printPosition(pos: Position): Unit {
+        printer.append(" # Position: ${pos.line}:${pos.column}")
     }
 
     public func toString(): String {

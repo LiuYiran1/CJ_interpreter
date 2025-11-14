@@ -112,9 +112,7 @@ public class Scanner {
             case ',' => addToken(TokenKind.COMMA)
             case '.' => addToken(TokenKind.DOT)
 
-            case ';' =>
-                addToken(TokenKind.SEMI)
-                if (matches(r'\n')) {}
+            case ';' => addToken(TokenKind.SEMI)
 
             case '^' => addToken(TokenKind.BITXOR)
             case '~' => addToken(TokenKind.BITNOT)
@@ -122,7 +120,7 @@ public class Scanner {
             case '#' => addToken(TokenKind.HASH)
             case '?' => addToken(TokenKind.QUEST)
             case '_' =>
-                if (isAlpha(peekNext())) {
+                if (isAlpha(peek())) {
                     identifier()
                 } else {
                     addToken(TokenKind.WILDCARD)
@@ -261,7 +259,9 @@ public class Scanner {
                         skipSpace()
                     }
                 }
-                addToken(TokenKind.NL, "\\n".toRuneArray())
+                if (lastTokenKind() != TokenKind.SEMI) {
+                    addToken(TokenKind.NL, "\\n".toRuneArray())
+                }
                 return
 
             case '\r' =>
@@ -275,7 +275,9 @@ public class Scanner {
                         skipSpace()
                     }
                 }
-                addToken(TokenKind.NL, "\\n".toRuneArray())
+                if (lastTokenKind() != TokenKind.SEMI) {
+                    addToken(TokenKind.NL, "\\n".toRuneArray())
+                }
                 return
 
             case ' ' => return
@@ -429,6 +431,14 @@ public class Scanner {
 
     private func addToken(typ: TokenKind, value: Array<Rune>) {
         tokens.add(Token(typ, String(value), Position(0, line, column)))
+    }
+
+    private func lastTokenKind(): TokenKind {
+        if (tokens.isEmpty()) {
+            TokenKind.ILLEGAL
+        } else {
+            tokens[tokens.size - 1].kind
+        }
     }
 }
 

@@ -5,6 +5,8 @@ import cjcj.parser
 import cjcj.scanner.*
 import std.env.*
 import std.collection.ArrayList
+import std.unittest.*
+import std.unittest.testmacro.*
 
 @Test
 class ParserTests {

@@ -30,12 +30,20 @@ public enum ErrorCode {
     | WHILE_TYPE_MISMATCH // while 条件表达式的结果不是 `Bool`。
     | BREAK_OUTSIDE_LOOP // 在非循环体内使用 `break`。
     | CONTINUE_OUTSIDE_LOOP // 在非循环体内使用 `continue`.
-    | ASSGIN_IMMUT_VAR // 试图给 `let` 定义的不可变变量赋值。
+    | ASSIGN_IMMUT_VAR // 试图给 `let` 定义的不可变变量赋值。
     | ASSIGN_TYPE_MISMATCH // 试图给变量赋值成不同的类型。
     | UNDEFINED_VAR // 试图使用未定义的变量。
     | DUPLICATED_DEF // 试图在同一静态作用域内定义同名变量。
     | DEF_TYPE_MISMATCH // 变量定义时，赋值的类型与声明的类型不匹配。
     | UNINITIALIZED_VAR // 试图读取未初始化的变量的值。
+    | GLOBAL_NO_INITIALIZER // 全局变量定义缺少初始化表达式。
+    | FUNC_MISSING_RETURN_TYPE // 函数定义中省略了返回类型。
+    | FUNC_MISSING_BODY // 函数定义中缺少函数体。
+    | CALLEE_NOT_FUNCTION // 试图调用一个非函数值。
+    | CALL_ARG_COUNT_MISMATCH // 函数调用时实参个数与形参个数不匹配。
+    | CALL_ARG_TYPE_MISMATCH // 函数调用时实参类型与形参类型不匹配。
+    | FUNC_USE_MUTABLE_NONLOCAL // 试图访问可变非局部变量。
+    | FUNC_RETURN_TYPE_MISMATCH // 函数返回值类型与声明的返回类型不匹配。
 }
 
 public class CjcjRuntimeErrorWithLocation <: Exception {

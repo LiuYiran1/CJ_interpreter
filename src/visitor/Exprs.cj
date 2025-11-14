@@ -57,7 +57,7 @@ public class BinaryExpr <: Expr {
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "BinaryExpr")
         printer.printObject("left", left)
-        printer.print("oper", oper.value)
+        printer.print("oper", oper)
         printer.printObject("right", right)
     }
 
@@ -151,7 +151,8 @@ public class LitConstExpr <: Expr {
 
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "LitConstExpr")
-        printer.print("literal", '"' + literal.value + '"')
+        printer.print("kind", literal.kind)
+        printer.printLiteral("literal", literal)
     }
 
     public mut prop literal: Token {
@@ -189,7 +190,7 @@ public class UnaryExpr <: Expr {
 
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "UnaryExpr")
-        printer.print("oper", oper.value)
+        printer.print("oper", oper)
         printer.printObject("right", right)
     }
 
@@ -288,7 +289,7 @@ public open class RefExpr <: Expr {
 
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "RefExpr")
-        printer.print("identifier", identifier.value)
+        printer.print("identifier", identifier)
     }
 }
 
@@ -542,7 +543,7 @@ public class ReturnExpr <: Expr {
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "ReturnExpr")
         printer.printOptionalObject("expr", expr)
-        printer.print("keyword", keyword.value)
+        printer.print("keyword", keyword)
     }
 
     public mut prop expr: ?Expr {
@@ -586,7 +587,7 @@ public class JumpExpr <: Expr {
 
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "JumpExpr")
-        printer.print("keyword", keyword.value)
+        printer.print("keyword", keyword)
     }
 
     public mut prop keyword: Token {
@@ -621,7 +622,7 @@ public open class MemberAccess <: Expr {
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "MemberAccess")
         printer.printObject("baseExpr", baseExpr)
-        printer.print("field", field.value)
+        printer.print("field", field)
     }
 
     public open override func traverse<R>(v: Visitor<R>): R {
@@ -665,7 +666,7 @@ public class PrimitiveTypeExpr <: Expr {
 
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "PrimitiveTypeExpr")
-        printer.print("keyword", keyword.value)
+        printer.print("keyword", keyword)
     }
 
     public override func traverse<R>(v: Visitor<R>): R {
@@ -700,7 +701,7 @@ public class ThisSuperExpr <: Expr {
 
     public override func yamlPrint(printer: YamlPrinter): Unit {
         printer.print("type", "ThisSuperExpr")
-        printer.print("keyword", keyword.value)
+        printer.print("keyword", keyword)
     }
 
     public override func traverse<R>(v: Visitor<R>): R {

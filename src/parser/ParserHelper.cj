@@ -100,6 +100,14 @@ class ParserHelper {
         tokens[current_ - 1]
     }
 
+    func previousNonNLTokenWithIndex(): (Token, Int64) {
+        var idx: Int64 = current_ - 1
+        while (idx > 0 && tokens[idx].kind == TokenKind.NL) {
+            idx--
+        }
+        (tokens[idx], idx)
+    }
+
     func next(): Token {
         tokens[current_ + 1]
     }
@@ -132,7 +140,7 @@ class ParserHelper {
         }
     }
 
-    func synchronizeBlockParenthesis(start: Token, current: Int64): ?FinalError {
+    func synchronizeBlockParenthesis(start: Token, current: Int64): Unit {
         var counter: Int64 = 1
         if (!check(TokenKind.LCURL) && !check(TokenKind.COMMA)) {
             do {
@@ -148,35 +156,31 @@ class ParserHelper {
             reporter.pop()
         }
         if (isAtEnd()) {
-            errorFinal(start, "unclosed delimiter: '('", current)
+            reporter.unclosedDelimiterError(peek(), start, current, current_)
         } else if (check(TokenKind.LCURL) && counter > 0) {
-            error(start, "unclosed delimiter: '('", current)
+            reporter.unclosedDelimiterError(peek(), start, current, current_)
         } else if (check(TokenKind.COMMA)) {
             error(tokens[this.current - 1], "Malformed parameter", this.current - 1)
-        } else {
-            None
         }
     }
 
-    func synchronizeBlockRightCurl(start: Token, current: Int64): ?FinalError {
+    func trySynchronizeBlockRightCurl(): Bool {
+        let beforeSynchronization = current_
         var counter: Int64 = 1
-        if (!check(TokenKind.RCURL)) {
-            do {
-                if (peek().kind == TokenKind.LCURL) {
-                    counter++
-                }
-                if (peek().kind == TokenKind.RCURL) {
-                    counter--
-                }
-                advance()
-            } while (!isAtEnd() && counter > 0)
-        }
+        do {
+            if (peek().kind == TokenKind.LCURL) {
+                counter++
+            }
+            if (peek().kind == TokenKind.RCURL) {
+                counter--
+            }
+            advance()
+        } while (!isAtEnd() && counter > 0)
         if (isAtEnd()) {
-            errorFinal(start, "unclosed delimiter: '{'", current)
-        } else if (counter == 0) {
-            return None
+            current_ = beforeSynchronization
+            false
         } else {
-            error(start, "unclosed delimiter: '{'", current)
+            true
         }
     }
 
@@ -232,9 +236,20 @@ class ParserHelper {
         ConsumeError()
     }
 
-    // func unclosedDelimiterError(currentToken: Token, startToken: Token, index: Int64) {
-    //     reporter.unclosedDelimiterError(currentToken, startToken, index)
-    // }
+    func unclosedDelimiterError(currentToken: Token, startToken: Token, startIndex: Int64, currentIndex: Int64) {
+        reporter.pop()
+        reporter.unclosedDelimiterError(currentToken, startToken, startIndex, currentIndex)
+        if (previous().kind == TokenKind.NL) {
+            retreat()
+        }
+    }
+
+    func trySynchronizeBlockRightCurlOrError(currentToken: Token, startToken: Token, startIndex: Int64,
+        currentIndex: Int64) {
+        if (!trySynchronizeBlockRightCurl()) {
+            unclosedDelimiterError(currentToken, startToken, startIndex, currentIndex)
+        }
+    }
 
     func logErrors() {
         reporter.logErrors()

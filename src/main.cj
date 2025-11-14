@@ -3,7 +3,6 @@ package cjcj
 import cjcj.visitor.Program
 import cjcj.parser.*
 import cjcj.scanner.*
-import cjcj.prettyPrinter.YamlPrinter
 import cjcj.executor.Executor
 import std.env.*
 import std.fs.File
@@ -32,9 +31,7 @@ public class Cj {
 
     public static func printAst(source: String): Unit {
         if (let Some(p) <- parseProgram(source)) {
-            let yamlPrinter: YamlPrinter = YamlPrinter()
-            p.yamlPrint(yamlPrinter)
-            println(yamlPrinter.toString())
+            println(p.yamlPrint())
         } else {
             exit(65)
         }

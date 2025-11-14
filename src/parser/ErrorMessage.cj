@@ -21,31 +21,28 @@ ${spaces} | ${" " * suffixPrefix[0].size}^
 }
 
 public class ErrorUnclosedDelimiter <: BaseErrorMessage {
-    ErrorUnclosedDelimiter(public let line: Int32, public let startIndex: Int64, public let start: String,
-        public let suffixPrefixStart: (String, String), public let currentIndex: Int64, public let current: String,
-        public let suffixPrefixCurrent: (String, String)) {}
+    ErrorUnclosedDelimiter(public let startLine: Int32, public let startIndex: Int64, public let start: String,
+        public let suffixPrefixStart: (String, String), public let currentLine: Int32, public let currentIndex: Int64,
+        public let current: String, public let suffixPrefixCurrent: (String, String), public let end: String) {}
 
     public func toString(): String {
-        let lineStr: String = line.toString()
-        let spaces: String = " " * lineStr.size
-        if (currentIndex - startIndex < 20) {
-            return """
+        let startLineStr: String = startLine.toString()
+        let startSpaces: String = " " * startLineStr.size
+        let currentLineStr: String = currentLine.toString()
+        let currentSpaces: String = " " * currentLineStr.size
+        return """
 \u{001b}[31m
-error\u{001b}[0m: unclosed delimiter '${Reporter.redify(start)}'
-${spaces} |
-${lineStr} | ${suffixPrefixStart[0]}${Reporter
-                .redify(start)} ${suffixPrefixStart[1]}
-${spaces} | ${" " * suffixPrefixStart[0].size}^ 
-                """
-        } else {
-            return """
-\u{001b}[31m
-error\u{001b}[0m: unclosed delimiter '${Reporter.redify(start)}'
-${spaces} |
-${lineStr} | ${suffixPrefixStart[0]}${Reporter
-                .redify(start)} ${suffixPrefixStart[1]}
-${spaces} | ${" " * suffixPrefixStart[0].size}^
-                """
-        }
+error\u{001b}[0m: unclosed delimiter: '${Reporter.redify(start)}'
+${startSpaces} |
+${startLineStr} | ${suffixPrefixStart[0]}${Reporter
+            .redify(start)} ${suffixPrefixStart[1]}
+${startSpaces} | ${" " * suffixPrefixStart[0].size}^
+\u{001b}[36minfo\u{001b}[0m: reached '${Reporter
+            .redify(current)}' without closing '${Reporter.redify(end)}'
+${currentSpaces} |
+${currentLineStr} | ${suffixPrefixCurrent[0]}${Reporter
+            .redify(current)} ${suffixPrefixCurrent[1]}
+${currentSpaces} | ${" " * suffixPrefixCurrent[0].size}^
+            """
     }
 }

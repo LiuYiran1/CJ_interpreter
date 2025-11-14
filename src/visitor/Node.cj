@@ -38,6 +38,18 @@ public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable {
 
     public func yamlPrint(printer: YamlPrinter): Unit
 
+    public func prettyPrint(): String {
+        let printer: PrettyPrinter = PrettyPrinter()
+        prettyPrint(printer)
+        return printer.toString()
+    }
+
+    public func yamlPrint(): String {
+        let printer: YamlPrinter = YamlPrinter()
+        yamlPrint(printer)
+        return printer.toString()
+    }
+
     public mut prop id: NodeId {
         get() {
             id_

@@ -64,11 +64,10 @@ public class Reporter {
     }
 
     func unclosedDelimiterError(currentToken: Token, startToken: Token, startIndex: Int64, currentIndex: Int64) {
-        pop()
-        pop()
         errors.add(
-            ErrorUnclosedDelimiter(currentToken.pos.line, startIndex, startToken.value, getSuffixPrefix(startIndex),
-                currentIndex, currentToken.value, getSuffixPrefix(currentIndex)))
+            ErrorUnclosedDelimiter(startToken.pos.line, startIndex, startToken.value, getSuffixPrefix(startIndex),
+                currentToken.pos.line, currentIndex, currentToken.value, getSuffixPrefix(currentIndex),
+                getEndToken(startToken.kind)))
     }
 
     public static func redify(str: String) {
@@ -87,5 +86,14 @@ ${errors.size} errors generated, ${min(errors.size, 5)} errors printed.
 Failed to parse program.
 """)
         }
+    }
+}
+
+private func getEndToken(startKind: TokenKind): String {
+    match (startKind) {
+        case TokenKind.LPAREN => ")"
+        case TokenKind.LCURL => "}"
+        case TokenKind.LSQUARE => "]"
+        case _ => throw Exception("Invalid start token kind for delimiter")
     }
 }
