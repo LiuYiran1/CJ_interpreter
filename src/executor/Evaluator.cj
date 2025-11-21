@@ -18,7 +18,6 @@ class UnhandledTokenKind <: Exception {
     }
 }
 
-
 public open class Evaluator <: Visitor<Value> {
     let recordsStack = ArrayStack<ActivationRecords>() // 动态栈
     var curRecords: ?ActivationRecords = None

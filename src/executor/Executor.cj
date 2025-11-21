@@ -36,5 +36,7 @@ public class Executor {
 
     public func execute(program: Program): Int64 {
         lab1SimpleEvaluation(program)
+        // buildAccessLink(program)
+        // 0
     }
 }

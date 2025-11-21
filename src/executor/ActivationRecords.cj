@@ -9,6 +9,13 @@ public abstract open class ActivationRecords {
     public var accessLink: ?ActivationRecords // 静态链（闭包/静态作用域）
     public let items: HashMap<String, Record>
 
+    public init(_name: ?String, _accessLink: ?ActivationRecords) {
+        this.name = _name
+        this.controlLink = None
+        this.accessLink = _accessLink
+        this.items = HashMap<String, Record>()
+    }
+
     public init(_name: ?String, _controlLink: ?ActivationRecords, _accessLink: ?ActivationRecords) {
         this.name = _name
         this.controlLink = _controlLink
