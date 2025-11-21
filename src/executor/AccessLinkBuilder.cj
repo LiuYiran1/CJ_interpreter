@@ -20,8 +20,6 @@ public class AccessLinkBuilder {
 
     public func buildAccessLink(program: Program): Map<Node, ActivationRecords> { // 返回每个block及其对应的活动记录
         var globalRecords: ActivationRecords = BlockActivationRecords("Global", None);
-        accessLinkMap.add(program, globalRecords);
-        printNode("program")
 
         for (decl in program.decls) {
             match (decl) {
@@ -37,9 +35,6 @@ public class AccessLinkBuilder {
     }
 
     private func buildFuncAccessLink(funcDecl: FuncDecl, outterRecords: ActivationRecords): Unit {
-        tabNum++;
-        printNode(funcDecl.identifier.value)
-
         if (let Some(theBlock) <- funcDecl.block) {
             // 和外层连接
             var funcRecords: FuncActivationRecords = FuncActivationRecords(funcDecl.identifier.value,
@@ -47,52 +42,78 @@ public class AccessLinkBuilder {
             accessLinkMap.add(theBlock, funcRecords);
 
             // 处理函数内部的声明
-            buildBlockAccessLink(theBlock, outterRecords);
+            buildBlockAccessLink(theBlock, funcRecords);
         }
-
-        tabNum--;
     }
 
     private func buildMainAccessLink(mainDecl: MainDecl, outterRecords: ActivationRecords): Unit {
-        tabNum++;
-        printNode("main")
-
         var theBlock = mainDecl.block
 
         // 和外层连接
-        var funcRecords: FuncActivationRecords = FuncActivationRecords(mainDecl.identifier.value, Some(outterRecords));
+        var funcRecords: FuncActivationRecords = FuncActivationRecords("main", Some(outterRecords));
         accessLinkMap.add(theBlock, funcRecords);
 
         // 处理函数内部的声明
-        buildBlockAccessLink(theBlock, outterRecords);
-
-        tabNum--;
+        buildBlockAccessLink(theBlock, funcRecords);
     }
 
     private func buildBlockAccessLink(blockNode: Block, outterRecords: ActivationRecords): Unit {
-
-        tabNum++;
-        printNode("block")
-
         var blockRecords: ActivationRecords = outterRecords;
-        if(!this.accessLinkMap.contains(blockNode)) {
-            blockRecords = BlockActivationRecords(None, Some(outterRecords));
+        if (!this.accessLinkMap.contains(blockNode)) {
+            blockRecords = BlockActivationRecords(None, Some(outterRecords))
             accessLinkMap.add(blockNode, blockRecords);
         }
         // 处理块内部的声明
         for (node in blockNode.nodes) {
             match (node) {
                 case funcDecl: FuncDecl => buildFuncAccessLink(funcDecl, blockRecords);
-                case ifExp : IfExpr => () // TODO:
-                case whileExpr : WhileExpr => () // TODO:
+                case ifExp: IfExpr =>
+                    buildBlockAccessLink(ifExp.ifBlock, blockRecords)
+                    match (ifExp.elseBranch) {
+                        case elseBlock: Block => buildBlockAccessLink(elseBlock, blockRecords)
+                        case _ => throw Exception("else不是block?")
+                    }
+                case whileExpr: WhileExpr => buildBlockAccessLink(whileExpr.block, blockRecords)
                 case _ => ()
             }
         }
-
-        tabNum--;
     }
 
-    private func printNode(name: String) {
-        println("  " * tabNum + name)
+    public func debugPrint(): Unit {
+        printAccessLinks()
+    }
+
+    private func printAccessLinks(): Unit {
+        println("======= Access Links =======")
+
+        for ((node, record) in this.accessLinkMap) {
+            printActivationRecord(record)
+            println("----------------------------")
+        }
+    }
+
+    private func printActivationRecord(record: ActivationRecords): Unit {
+        var curOpt: ?ActivationRecords = Some(record)
+        var level: Int = 0
+
+        while (let Some(cur) <- curOpt) {
+            let nameStr = match (cur.name) {
+                case Some(n) => n
+                case None => "<block>"
+            }
+
+            println(nameStr)
+
+            curOpt = cur.accessLink
+            level += 1
+        }
+    }
+
+    private func repeatString(s: String, n: Int): String {
+        var out: String = ""
+        for (i in 0..n) {
+            out = out + s
+        }
+        out
     }
 }

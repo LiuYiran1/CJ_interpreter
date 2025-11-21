@@ -19,6 +19,7 @@ class UnhandledTokenKind <: Exception {
 }
 
 public open class Evaluator <: Visitor<Value> {
+    var recordsMap: Map<Node, ActivationRecords> = HashMap<Node, ActivationRecords>() // 每个块对应的活动记录
     let recordsStack = ArrayStack<ActivationRecords>() // 动态栈
     var curRecords: ?ActivationRecords = None
 
@@ -358,10 +359,13 @@ public open class Evaluator <: Visitor<Value> {
         // 加入活动记录
         var newRecords: ActivationRecords
         if (recordsStack.isEmpty()) {
-            newRecords = BlockActivationRecords(id.toString(), None, None)
+            //newRecords = BlockActivationRecords(id.toString(), None, None)
+            newRecords = recordsMap.get(block).getOrThrow()
         } else {
             var last = recordsStack.peek()
-            newRecords = BlockActivationRecords(id.toString(), last, last)
+            //newRecords = BlockActivationRecords(id.toString(), last, last)
+            newRecords = recordsMap.get(block).getOrThrow()
+            newRecords.controlLink = last
         }
         id++;
         recordsStack.add(newRecords)
