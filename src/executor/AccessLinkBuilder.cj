@@ -6,6 +6,9 @@ import cjcj.scanner.Token
 import std.convert.*
 import std.collection.*
 
+
+// *************************** 构建accessLink + 将函数的参数的Record加入到函数的items中 + 检查函数的定义问题 ***************************
+
 class UnhandledDeclInAccessLinkBuilder <: Exception {
     public UnhandledDeclInAccessLinkBuilder(let fromWhere: Node) {}
 
@@ -17,15 +20,24 @@ class UnhandledDeclInAccessLinkBuilder <: Exception {
 public class AccessLinkBuilder {
     var accessLinkMap: Map<Node, ActivationRecords> = HashMap<Node, ActivationRecords>();
     var tabNum = 0
+    var curRecords: ?ActivationRecords = None
 
     public func buildAccessLink(program: Program): Map<Node, ActivationRecords> { // 返回每个block及其对应的活动记录
         var globalRecords: ActivationRecords = BlockActivationRecords("Global", None);
 
+        accessLinkMap.add(program, globalRecords);
+
         for (decl in program.decls) {
             match (decl) {
-                case mainDecl: MainDecl => buildMainAccessLink(mainDecl, globalRecords);
-                case funcDecl: FuncDecl => buildFuncAccessLink(funcDecl, globalRecords);
-                case varDecl: VarDecl => ()
+                case mainDecl: MainDecl => 
+                                        var mainRecord: Record = Record(mainDecl.identifier, None, None, mainDecl.keyword, mainDecl);
+                                        globalRecords.addRecord(mainDecl.identifier.value, mainRecord, mainDecl);
+                                        buildMainAccessLink(mainDecl, globalRecords);
+                case funcDecl: FuncDecl => 
+                                        var funcRecord: Record = Record(funcDecl.identifier, None, None, funcDecl.keyword, funcDecl);
+                                        globalRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
+                                        buildFuncAccessLink(funcDecl, globalRecords);
+                case varDecl: VarDecl => () // TODO:全局变量
                 case funcParam: FuncParam => ()
                 case _ => throw UnhandledDeclInAccessLinkBuilder(decl);
             }
@@ -40,9 +52,19 @@ public class AccessLinkBuilder {
             var funcRecords: FuncActivationRecords = FuncActivationRecords(funcDecl.identifier.value,
                 Some(outterRecords));
             accessLinkMap.add(theBlock, funcRecords);
+            // 处理函数的参数
+            let params = funcDecl.params
+            for (param in params) {
+                var paramName = param.identifier.value
+                println("Adding param record: ${paramName} to function: ${funcDecl.identifier.value}")
+                var paramRecord: Record = Record(param.identifier, None, Some(param.paramType), param.keyword, param)
+                funcRecords.addRecord(paramName, paramRecord, funcDecl)
+            }
 
             // 处理函数内部的声明
             buildBlockAccessLink(theBlock, funcRecords);
+        } else {
+            throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "函数定义中缺少函数体。", funcDecl);
         }
     }
 
@@ -66,7 +88,10 @@ public class AccessLinkBuilder {
         // 处理块内部的声明
         for (node in blockNode.nodes) {
             match (node) {
-                case funcDecl: FuncDecl => buildFuncAccessLink(funcDecl, blockRecords);
+                case funcDecl: FuncDecl => 
+                    var funcRecord: Record = Record(funcDecl.identifier, None, None, funcDecl.keyword, funcDecl);
+                    blockRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
+                    buildFuncAccessLink(funcDecl, blockRecords);
                 case ifExp: IfExpr =>
                     buildBlockAccessLink(ifExp.ifBlock, blockRecords)
                     match (ifExp.elseBranch) {

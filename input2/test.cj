@@ -1,17 +1,14 @@
+func aaa(a : Int64) : Int64 {
+    1
+}
+
 main() {
-    var x = 10
-    func inner(): Int64 {
-        x * 2
-        if (1 == 1) {
-            x = 1
-        } else {
-            x = 2
-        }
-    }
-    if (1 == 1) {
-        x = 1
+    aaa()
+    var a = 10;
+    var b = a + 101;
+    if (1 == 0) {
+        a
     } else {
-        x = 2
+        b
     }
-    inner()
 }
