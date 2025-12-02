@@ -15,6 +15,7 @@ public class Record {
     var value: ?Value
     var recordType: ?TokenKind // 类型
     var keyword: Token // var / let
+    var declNode: Node // 主要用于存函数
 
     public init(_name: Token, _value: ?Value, _recordTypeNode: ?TypeNode, _keyword: Token, node: Node) {
         this.name = _name
@@ -26,6 +27,7 @@ public class Record {
             this.recordType = None
         }
         this.keyword = _keyword
+        this.declNode = node
 
         // 类型推导
         if (recordType.isNone() && let Some(theValue) <- value) {

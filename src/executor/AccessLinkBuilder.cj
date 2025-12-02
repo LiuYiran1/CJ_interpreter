@@ -6,7 +6,6 @@ import cjcj.scanner.Token
 import std.convert.*
 import std.collection.*
 
-
 // *************************** 构建accessLink + 将函数的参数的Record加入到函数的items中 + 检查函数的定义问题 ***************************
 
 class UnhandledDeclInAccessLinkBuilder <: Exception {
@@ -29,14 +28,16 @@ public class AccessLinkBuilder {
 
         for (decl in program.decls) {
             match (decl) {
-                case mainDecl: MainDecl => 
-                                        var mainRecord: Record = Record(mainDecl.identifier, None, None, mainDecl.keyword, mainDecl);
-                                        globalRecords.addRecord(mainDecl.identifier.value, mainRecord, mainDecl);
-                                        buildMainAccessLink(mainDecl, globalRecords);
-                case funcDecl: FuncDecl => 
-                                        var funcRecord: Record = Record(funcDecl.identifier, None, None, funcDecl.keyword, funcDecl);
-                                        globalRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
-                                        buildFuncAccessLink(funcDecl, globalRecords);
+                case mainDecl: MainDecl =>
+                    var mainRecord: Record = Record(mainDecl.identifier, None, mainDecl.declType, mainDecl.keyword,
+                        mainDecl);
+                    globalRecords.addRecord(mainDecl.identifier.value, mainRecord, mainDecl);
+                    buildMainAccessLink(mainDecl, globalRecords);
+                case funcDecl: FuncDecl =>
+                    var funcRecord: Record = Record(funcDecl.identifier, None, funcDecl.declType, funcDecl.keyword,
+                        funcDecl);
+                    globalRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
+                    buildFuncAccessLink(funcDecl, globalRecords);
                 case varDecl: VarDecl => () // TODO:全局变量
                 case funcParam: FuncParam => ()
                 case _ => throw UnhandledDeclInAccessLinkBuilder(decl);
@@ -55,8 +56,7 @@ public class AccessLinkBuilder {
             // 处理函数的参数
             let params = funcDecl.params
             for (param in params) {
-                var paramName = param.identifier.value
-                println("Adding param record: ${paramName} to function: ${funcDecl.identifier.value}")
+                var paramName = param.name.value
                 var paramRecord: Record = Record(param.identifier, None, Some(param.paramType), param.keyword, param)
                 funcRecords.addRecord(paramName, paramRecord, funcDecl)
             }
@@ -88,7 +88,7 @@ public class AccessLinkBuilder {
         // 处理块内部的声明
         for (node in blockNode.nodes) {
             match (node) {
-                case funcDecl: FuncDecl => 
+                case funcDecl: FuncDecl =>
                     var funcRecord: Record = Record(funcDecl.identifier, None, None, funcDecl.keyword, funcDecl);
                     blockRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
                     buildFuncAccessLink(funcDecl, blockRecords);

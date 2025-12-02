@@ -23,7 +23,7 @@ public open class Evaluator <: Visitor<Value> {
     let recordsStack = ArrayStack<ActivationRecords>() // 动态栈
     var curRecords: ?ActivationRecords = None
 
-    public init(recordsMap: Map<Node, ActivationRecords>, program : Program) {
+    public init(recordsMap: Map<Node, ActivationRecords>, program: Program) {
         this.recordsMap = recordsMap
         recordsStack.add(recordsMap.get(program).getOrThrow())
         curRecords = recordsMap.get(program).getOrThrow()
@@ -446,42 +446,51 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(call: CallExpr): Value {
-        // 切换为函数内的作用域，拿到函数的block
-        let callee : Node = call.callee
-        // TODO : callee 是 RefExpr
-        let calleeBlock : Block = match (callee) {
+        // callee 是 RefExpr
+        let callee: Node
+        if (let Some(curRecords) <- curRecords) {
+            callee = curRecords.getStaticDeclNode(
+                (match (call.callee) {
+                    case ref: RefExpr => ref.identifier.value
+                    case _ => throw UnhandledTokenKind("函数调用表达式的被调用者不太对啊")
+                }),
+                call
+            )
+        } else {
+            throw Exception();
+        }
+
+        let calleeBlock: Block = match (callee) {
             case funcDecl: FuncDecl => funcDecl.block.getOrThrow()
             case mainDecl: MainDecl => mainDecl.block
-            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION,
-                "试图调用一个非函数值", call);
+            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "试图调用一个非函数值", call);
         }
-        let funcRecords : FuncActivationRecords
-        if(let Some(calleeRecords) <- recordsMap.get(callee)) {
+
+        // 切换为函数内的作用域，拿到活动记录
+        let funcRecords: FuncActivationRecords
+        if (let Some(calleeRecords) <- recordsMap.get(calleeBlock)) {
             funcRecords = match (calleeRecords) {
                 case fr: FuncActivationRecords => fr
-                case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION,
-                    "试图调用一个非函数值", call);
+                case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "试图调用一个非函数值", call);
             }
             curRecords = calleeRecords
             recordsStack.add(calleeRecords)
         } else {
-            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR,
-                "未定义的函数调用", call);
+            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "未定义的函数调用", call);
         }
 
         // 传递参数
-        let actualParams : ArrayList<FuncParam> = match (callee) {
-            case funcDecl: FuncDecl => funcDecl.params
-            case mainDecl: MainDecl => ArrayList<FuncParam>()
-            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION,
-                "试图调用一个非函数值", call);
+        let actualArguments: ArrayList<Argument> = call.arguments
+        let actualArgumentsValue: ArrayList<Value> = ArrayList<Value>()
+        for (arg in actualArguments) {
+            let val: Value = arg.traverse(this)
+            actualArgumentsValue.add(val)
         }
-        funcRecords.assignParams(actualParams)
-        
+        funcRecords.assignParams(actualArgumentsValue, call)
 
-
-
-        throw UnsupportedException("Unimplemented method for Visitor : Call Expression")
+        // 执行函数体
+        // TODO: 这里是否要捕捉while break
+        calleeBlock.traverse(this)
     }
 
     public open override func visit(_: ReturnExpr): Value {
@@ -513,7 +522,6 @@ public open class Evaluator <: Visitor<Value> {
         if (let Some(curRecords) <- curRecords) {
             // 重复定义
             curRecords.addRecord(varName, newRecord, decl);
-            
         }
 
         var ret = Value.VUnit;
@@ -525,7 +533,7 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(_: FuncDecl): Value {
-        throw UnsupportedException("Unimplemented method for Visitor : Function Declaration")
+        return Value.VUnit;
     }
 
     public open override func visit(_: MainDecl): Value {
@@ -541,7 +549,7 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(arg: Argument): Value {
-        throw UnsupportedException("Unimplemented method for Visitor : Argument")
+        return arg.expr.traverse(this)
     }
 
     public open override func visit(_: TypeNode): Value {

@@ -22,7 +22,7 @@ public struct NodeId <: Hashable {
     }
 }
 
-public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable {
+public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable & ToString {
     private var id_: NodeId
 
     public Node(id: NodeId) {
@@ -69,6 +69,10 @@ public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable {
 
     public operator override func !=(other: Node): Bool {
         !(this == other)
+    }
+
+    public override func toString(): String {
+        return "Node(id: ${id.id})"
     }
 }
 

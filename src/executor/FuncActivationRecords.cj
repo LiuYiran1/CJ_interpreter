@@ -28,10 +28,15 @@ public class FuncActivationRecords <: ActivationRecords {
         this.paramNames.add(name)
     }
 
-    public func assignParams(actualParams : ArrayList<FuncParam>){
-        if(paramNames.size != actualParams.size){
+    public func assignParams(actualArgumentsValue: ArrayList<Value>, node: Node): Unit {
+        if (paramNames.size != actualArgumentsValue.size) {
             throw CjcjRuntimeErrorWithLocation(ErrorCode.CALL_ARG_COUNT_MISMATCH,
-                "函数参数个数不匹配，期望 ${paramNames.size} 个，实际 ${actualParams.size} 个", actualParams[0])
+                "函数参数个数不匹配，期望 ${paramNames.size} 个，实际 ${actualArgumentsValue.size} 个", node)
+        }
+        for (i in 0..paramNames.size) {
+            let paramName = paramNames[i]
+            let actualValue = actualArgumentsValue[i]
+            this.items[paramName].updateValue(actualValue, node)
         }
     }
 }

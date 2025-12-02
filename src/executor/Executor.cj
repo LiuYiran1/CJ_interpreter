@@ -49,9 +49,9 @@ public class Executor {
             .first()
             .getOrThrow() as MainDecl)
             .getOrThrow()
-        let evaluator = Evaluator(buildAccessLink(program), program)
 
         try {
+            let evaluator = Evaluator(buildAccessLink(program), program)
             let val = evaluator.visit(mainDecl.block)
             println(val.toValueString())
             0
