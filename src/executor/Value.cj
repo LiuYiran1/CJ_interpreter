@@ -12,7 +12,8 @@ public enum Value {
     | VString(String)
     | VBoolean(Bool)
     | VUnit
-    | VFunction(FuncDecl)
+    | VFunction(FuncValue)
+    | VMain(MainValue)
 
     public func toValueString(): String {
         match (this) {
@@ -21,6 +22,7 @@ public enum Value {
             case VBoolean(b) => return b.toString()
             case VUnit => return "()"
             case VFunction(f) => return "func"
+            case VMain(m) => return "main"
         }
     }
 
@@ -36,7 +38,35 @@ public enum Value {
     static func from(_: Unit): Value {
         VUnit
     }
-    static func from(v: FuncDecl): Value {
+    static func from(v: FuncValue): Value {
         VFunction(v)
+    }
+    static func from(v : MainValue): Value {
+        VMain(v)
+    }
+}
+
+public class FuncValue <: ToString{
+    public var funcDecl: FuncDecl
+    // public var type: FuncType
+
+    public init(_funcDecl: FuncDecl) {
+        this.funcDecl = _funcDecl
+    }
+
+    public override func toString(): String {
+        "func"
+    }
+}
+
+public class MainValue <: ToString{
+    public var mainDecl: MainDecl
+
+    public init(_mainDecl: MainDecl) {
+        this.mainDecl = _mainDecl
+    }
+
+    public override func toString(): String {
+        "main"
     }
 }

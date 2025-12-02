@@ -22,7 +22,7 @@ public struct NodeId <: Hashable {
     }
 }
 
-public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable & ToString {
+public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable {
     private var id_: NodeId
 
     public Node(id: NodeId) {
@@ -71,9 +71,6 @@ public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable & ToStr
         !(this == other)
     }
 
-    public override func toString(): String {
-        return "Node(id: ${id.id})"
-    }
 }
 
 public class Argument <: Node {

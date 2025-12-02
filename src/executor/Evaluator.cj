@@ -447,22 +447,16 @@ public open class Evaluator <: Visitor<Value> {
 
     public open override func visit(call: CallExpr): Value {
         // callee 是 RefExpr
-        let callee: Node
-        if (let Some(curRecords) <- curRecords) {
-            callee = curRecords.getStaticDeclNode(
-                (match (call.callee) {
-                    case ref: RefExpr => ref.identifier.value
-                    case _ => throw UnhandledTokenKind("函数调用表达式的被调用者不太对啊")
-                }),
-                call
-            )
-        } else {
-            throw Exception();
-        }
-
-        let calleeBlock: Block = match (callee) {
-            case funcDecl: FuncDecl => funcDecl.block.getOrThrow()
-            case mainDecl: MainDecl => mainDecl.block
+        let calleeValue = call.callee.traverse(this)
+        let calleeBlock: Block
+        match (calleeValue) {
+            case Value.VFunction(fv) =>
+            if(let Some(theBlock) <- fv.funcDecl.block){
+                calleeBlock = theBlock
+            } else {
+                throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "调用的函数没有body", fv.funcDecl);
+            }
+            case Value.VMain(mv) => calleeBlock = mv.mainDecl.block
             case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "试图调用一个非函数值", call);
         }
 
@@ -486,6 +480,7 @@ public open class Evaluator <: Visitor<Value> {
             let val: Value = arg.traverse(this)
             actualArgumentsValue.add(val)
         }
+
         funcRecords.assignParams(actualArgumentsValue, call)
 
         // 执行函数体

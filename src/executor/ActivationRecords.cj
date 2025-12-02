@@ -34,11 +34,6 @@ public abstract class ActivationRecords {
         }
     }
 
-    // 函数赋值用
-    public func getStaticDeclNode(name: String, node: Node): Node {
-        var record: Record = this.getStaticRecord(name, node)
-        return record.declNode
-    }
 
     public func getStaticValue(name: String, node: Node): Value {
         var record: Record = this.getStaticRecord(name, node)

@@ -1,6 +1,5 @@
 package cjcj.executor
 
-import std.collection.*
 import cjcj.visitor.*
 import cjcj.scanner.*
 
@@ -15,9 +14,8 @@ public class Record {
     var value: ?Value
     var recordType: ?TokenKind // 类型
     var keyword: Token // var / let
-    var declNode: Node // 主要用于存函数
 
-    public init(_name: Token, _value: ?Value, _recordTypeNode: ?TypeNode, _keyword: Token, node: Node) {
+    public init(_name: Token, _value: ?Value, _recordTypeNode: ?TypeNode, _keyword: Token, node : Node) {
         this.name = _name
         this.value = _value
         if (let Some(_recordTypeNode) <- _recordTypeNode) {
@@ -27,7 +25,6 @@ public class Record {
             this.recordType = None
         }
         this.keyword = _keyword
-        this.declNode = node
 
         // 类型推导
         if (recordType.isNone() && let Some(theValue) <- value) {
@@ -35,12 +32,17 @@ public class Record {
                 case VInteger(i) => recordType = TokenKind.INT64
                 case VString(s) => recordType = TokenKind.IDENTIFIER // String会被识别成标识符
                 case VBoolean(b) => recordType = TokenKind.BOOLEAN
+                case VFunction(f) => recordType = TokenKind.FUNC
+                case VMain(m) => recordType = TokenKind.MAIN
                 case _ => throw CanNotGuessType(theValue.toValueString());
             }
             return;
         }
         // value和record_type对不上
         if (let Some(theRecordType) <- this.recordType && let Some(theValue) <- value) {
+            if(theRecordType == TokenKind.FUNC || theRecordType == TokenKind.MAIN) {
+                return; // 函数类型不进行类型检查
+            }
             if (theRecordType == TokenKind.INT64 && (let Value.VInteger(i) <- theValue)) {
                 return;
             }
