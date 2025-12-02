@@ -65,7 +65,7 @@ public class Record {
         match (keyword.kind) {
             case TokenKind.LET => throw CjcjRuntimeErrorWithLocation(ErrorCode.ASSIGN_IMMUT_VAR,
                 "试图给 `let` 定义的不可变变量赋值", node);
-            case TokenKind.VAR =>
+            case TokenKind.VAR | TokenKind.ILLEGAL =>
                 // 类型检查
                 if (let Some(theRecordType) <- recordType) {
                     if (theRecordType == TokenKind.INT64 && (let Value.VInteger(i) <- newValue)) {

@@ -16,13 +16,7 @@ public class FuncActivationRecords <: ActivationRecords {
         this.return_addr = None
         this.save_returnv_addr = None
         this.returnType = _returnType
-        if(let Some(rt) <- returnType){
-            match (rt){
-                case funcTypeNode: FuncType => println("是函数")
-                case pri: PrimitiveType => println("是基础类型")
-                case _ => println("是啥")
-            }
-        }
+
         this.isMain = _isMain
         // 静态检查函数参数和返回值类型
         if(!isMain){

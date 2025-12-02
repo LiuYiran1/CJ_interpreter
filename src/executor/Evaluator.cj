@@ -6,6 +6,13 @@ import cjcj.scanner.Token
 import std.convert.*
 import std.collection.*
 
+public class ReturnException <: Exception{
+    public let returnValue: Value
+
+    public init(returnValue: Value) {
+        this.returnValue = returnValue
+    }
+}
 class Lab1TodoException <: Exception {
     public init(message: String) {
         super("Lab 1 TODO: " + message)
@@ -445,8 +452,51 @@ public open class Evaluator <: Visitor<Value> {
         }
     }
 
+    private func isLibFunc(call: CallExpr): Bool {
+        match (call.callee) {
+            case ref: RefExpr =>
+                let funcName = ref.identifier.value
+                match (funcName) {
+                    case "println" => return true
+                    case _ => return false
+                }
+            case _ => return false
+        }
+    }
+
+    private func visitLibFunc(call : CallExpr): Value{
+        match (call.callee) {
+            case ref: RefExpr =>
+                let funcName = ref.identifier.value
+                match (funcName) {
+                    case "println" =>
+                        let args = call.arguments
+                        if (args.size != 1) {
+                            throw CjcjRuntimeErrorWithLocation(ErrorCode.CALL_ARG_COUNT_MISMATCH,
+                                "内置函数 println 需要 1 个参数，实际 ${args.size} 个", call)
+                        }
+                        let argValue = args[0].traverse(this)
+                        match (argValue) {
+                            case Value.VInteger(i) => println(i.toString())
+                            case Value.VString(s) => println(s)
+                            case Value.VBoolean(b) => println(b.toString())
+                            case Value.VUnit => println("()")
+                            case Value.VFunction(f) => println("<Function>")
+                            case Value.VMain(f) => println("<Function main>")
+                            
+                        }
+                        return Value.VUnit
+                    case _ => throw UnhandledTokenKind("Unhandled Lib Function: ${funcName}")
+                }
+            case _ => throw UnhandledTokenKind("Callee of Lib Function is not RefExpr")
+        }
+    }
+
     public open override func visit(call: CallExpr): Value {
         // callee 是 RefExpr
+        if(isLibFunc(call)){
+            return visitLibFunc(call)
+        }
         let calleeValue = call.callee.traverse(this)
         let calleeBlock: Block
         match (calleeValue) {
@@ -460,7 +510,9 @@ public open class Evaluator <: Visitor<Value> {
             case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "试图调用一个非函数值", call);
         }
 
-        // 切换为函数内的作用域，拿到活动记录
+        // 切换为函数内的作用域，拿到活动记录，同时记录现在的栈的情况
+        var lastRecords = curRecords;
+        var lastStackSize : Int64 = recordsStack.size; 
         let funcRecords: FuncActivationRecords
         if (let Some(calleeRecords) <- recordsMap.get(calleeBlock)) {
             funcRecords = match (calleeRecords) {
@@ -483,9 +535,30 @@ public open class Evaluator <: Visitor<Value> {
 
         funcRecords.assignParams(actualArgumentsValue, call)
 
+
+        // 如果函数体为空就报错
+        if(calleeBlock.nodes.isEmpty()) {
+            throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "调用的函数没有body", call);
+        }
         // 执行函数体
         // TODO: 这里是否要捕捉while break
-        calleeBlock.traverse(this)
+        // TODO: 这里好像要捕捉return
+        var returnValue : Value;
+        try{
+            returnValue = calleeBlock.traverse(this)
+        } catch(){
+
+        }
+            // 恢复调用前的作用域
+            // 检查返回值类型
+            while (lastStackSize < recordsStack.size) {
+                recordsStack.remove()
+            }
+            curRecords = lastRecords
+        
+
+        return returnValue
+
     }
 
     public open override func visit(_: ReturnExpr): Value {

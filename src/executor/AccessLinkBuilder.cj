@@ -24,6 +24,8 @@ public class AccessLinkBuilder {
     public func buildAccessLink(program: Program): Map<Node, ActivationRecords> { // 返回每个block及其对应的活动记录
         var globalRecords: ActivationRecords = BlockActivationRecords("Global", None);
 
+        addLibFunc2GlobalRecords(globalRecords);
+
         accessLinkMap.add(program, globalRecords);
 
         for (decl in program.decls) {
@@ -47,10 +49,14 @@ public class AccessLinkBuilder {
         return accessLinkMap;
     }
 
+    private func addLibFunc2GlobalRecords(globalRecords: ActivationRecords){
+
+    }
+
     private func buildFuncAccessLink(funcDecl: FuncDecl, outterRecords: ActivationRecords): Unit {
         if (let Some(theBlock) <- funcDecl.block) {
             // 和外层连接
-            
+            //funcDecl.
             var funcRecords: FuncActivationRecords = FuncActivationRecords(funcDecl.identifier.value,
                 Some(outterRecords), funcDecl.declType, funcDecl, false);
             accessLinkMap.add(theBlock, funcRecords);
