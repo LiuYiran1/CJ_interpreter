@@ -70,7 +70,6 @@ public abstract class Node <: Hashable & Equatable<Node> & YamlPrintable {
     public operator override func !=(other: Node): Bool {
         !(this == other)
     }
-
 }
 
 public class Argument <: Node {

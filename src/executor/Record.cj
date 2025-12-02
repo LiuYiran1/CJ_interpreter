@@ -15,7 +15,7 @@ public class Record {
     var recordType: ?TokenKind // 类型
     var keyword: Token // var / let
 
-    public init(_name: Token, _value: ?Value, _recordTypeNode: ?TypeNode, _keyword: Token, node : Node) {
+    public init(_name: Token, _value: ?Value, _recordTypeNode: ?TypeNode, _keyword: Token, node: Node) {
         this.name = _name
         this.value = _value
         if (let Some(_recordTypeNode) <- _recordTypeNode) {
@@ -40,7 +40,7 @@ public class Record {
         }
         // value和record_type对不上
         if (let Some(theRecordType) <- this.recordType && let Some(theValue) <- value) {
-            if(theRecordType == TokenKind.FUNC || theRecordType == TokenKind.MAIN) {
+            if (theRecordType == TokenKind.FUNC || theRecordType == TokenKind.MAIN) {
                 return; // 函数类型不进行类型检查
             }
             if (theRecordType == TokenKind.INT64 && (let Value.VInteger(i) <- theValue)) {

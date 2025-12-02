@@ -41,17 +41,18 @@ public enum Value {
     static func from(v: FuncValue): Value {
         VFunction(v)
     }
-    static func from(v : MainValue): Value {
+    static func from(v: MainValue): Value {
         VMain(v)
     }
 }
 
-public class FuncValue <: ToString{
+public class FuncValue <: ToString {
     public var funcDecl: FuncDecl
-    // public var type: FuncType
+    public var capturedEnv: ?ActivationRecords
 
-    public init(_funcDecl: FuncDecl) {
+    public init(_funcDecl: FuncDecl, _env: ?ActivationRecords) {
         this.funcDecl = _funcDecl
+        this.capturedEnv = _env
     }
 
     public override func toString(): String {
@@ -59,7 +60,7 @@ public class FuncValue <: ToString{
     }
 }
 
-public class MainValue <: ToString{
+public class MainValue <: ToString {
     public var mainDecl: MainDecl
 
     public init(_mainDecl: MainDecl) {

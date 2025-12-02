@@ -10,4 +10,8 @@ public class BlockActivationRecords <: ActivationRecords {
     public init(_name: ?String, _controlLink: ?ActivationRecords, _accessLink: ?ActivationRecords) {
         super(_name, _controlLink, _accessLink)
     }
+
+    public init(activationRecords: ActivationRecords) {
+        super(activationRecords)
+    }
 }

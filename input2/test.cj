@@ -5,6 +5,9 @@ func fib(n: Int64): Int64 {
         fib(n - 1) + fib(n - 2)
     }
 }
+
 main() {
-    fib(2)
+    println(fib(4))
+    println(fib(6))
+    println(fib(8))
 }

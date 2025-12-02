@@ -16,6 +16,13 @@ public abstract class ActivationRecords {
         this.items = HashMap<String, Record>()
     }
 
+    public init(activationRecords: ActivationRecords) {
+        this.name = activationRecords.name
+        this.controlLink = activationRecords.controlLink
+        this.accessLink = activationRecords.accessLink
+        this.items = HashMap<String, Record>()
+    }
+
     public init(_name: ?String, _controlLink: ?ActivationRecords, _accessLink: ?ActivationRecords) {
         this.name = _name
         this.controlLink = _controlLink
@@ -30,17 +37,16 @@ public abstract class ActivationRecords {
         } else if (let Some(last) <- accessLink) {
             return last.getStaticRecord(name, node)
         } else {
-            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "静态作用域下未定义变量", node)
+            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "静态作用域下未定义变量：" + name, node)
         }
     }
-
 
     public func getStaticValue(name: String, node: Node): Value {
         var record: Record = this.getStaticRecord(name, node)
         if (let Some(val) <- record.value) {
             return val
         } else {
-            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNINITIALIZED_VAR, "静态作用域下未初始化变量", node)
+            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNINITIALIZED_VAR, "静态作用域下未初始化变量：" + name, node)
         }
     }
 

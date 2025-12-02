@@ -31,13 +31,13 @@ public class AccessLinkBuilder {
         for (decl in program.decls) {
             match (decl) {
                 case mainDecl: MainDecl =>
-                    var mainRecord: Record = Record(mainDecl.identifier, Value.from(MainValue(mainDecl)), None, mainDecl.keyword,
-                        mainDecl);
+                    var mainRecord: Record = Record(mainDecl.identifier, Value.from(MainValue(mainDecl)), None,
+                        mainDecl.keyword, mainDecl);
                     globalRecords.addRecord(mainDecl.identifier.value, mainRecord, mainDecl);
                     buildMainAccessLink(mainDecl, globalRecords);
                 case funcDecl: FuncDecl =>
-                    var funcRecord: Record = Record(funcDecl.identifier, Value.from(FuncValue(funcDecl)), None, funcDecl.keyword,
-                        funcDecl);
+                    var funcRecord: Record = Record(funcDecl.identifier, Value.from(FuncValue(funcDecl, None)), None,
+                        funcDecl.keyword, funcDecl);
                     globalRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
                     buildFuncAccessLink(funcDecl, globalRecords);
                 case varDecl: VarDecl => () // TODO:全局变量
@@ -49,8 +49,7 @@ public class AccessLinkBuilder {
         return accessLinkMap;
     }
 
-    private func addLibFunc2GlobalRecords(globalRecords: ActivationRecords){
-
+    private func addLibFunc2GlobalRecords(globalRecords: ActivationRecords) {
     }
 
     private func buildFuncAccessLink(funcDecl: FuncDecl, outterRecords: ActivationRecords): Unit {
@@ -63,9 +62,8 @@ public class AccessLinkBuilder {
             // 处理函数的参数
             let params = funcDecl.params
             for (param in params) {
-                var paramName = param.name.value
                 var paramRecord: Record = Record(param.identifier, None, Some(param.paramType), param.keyword, param)
-                funcRecords.addParamRecord(paramName, paramRecord, funcDecl)
+                funcRecords.addParamRecord(param, paramRecord, funcDecl)
             }
 
             // 处理函数内部的声明
@@ -79,7 +77,8 @@ public class AccessLinkBuilder {
         var theBlock = mainDecl.block
 
         // 和外层连接
-        var funcRecords: FuncActivationRecords = FuncActivationRecords("main", Some(outterRecords), mainDecl.declType, mainDecl, true);
+        var funcRecords: FuncActivationRecords = FuncActivationRecords("main", Some(outterRecords), mainDecl.declType,
+            mainDecl, true);
         accessLinkMap.add(theBlock, funcRecords);
 
         // 处理函数内部的声明
@@ -96,7 +95,8 @@ public class AccessLinkBuilder {
         for (node in blockNode.nodes) {
             match (node) {
                 case funcDecl: FuncDecl =>
-                    var funcRecord: Record = Record(funcDecl.identifier, Value.from(FuncValue(funcDecl)), None, funcDecl.keyword, funcDecl);
+                    var funcRecord: Record = Record(funcDecl.identifier, Value.from(FuncValue(funcDecl, None)), None,
+                        funcDecl.keyword, funcDecl);
                     blockRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
                     buildFuncAccessLink(funcDecl, blockRecords);
                 case ifExp: IfExpr =>

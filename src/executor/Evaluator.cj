@@ -6,13 +6,14 @@ import cjcj.scanner.Token
 import std.convert.*
 import std.collection.*
 
-public class ReturnException <: Exception{
+public class ReturnException <: Exception {
     public let returnValue: Value
 
     public init(returnValue: Value) {
         this.returnValue = returnValue
     }
 }
+
 class Lab1TodoException <: Exception {
     public init(message: String) {
         super("Lab 1 TODO: " + message)
@@ -32,8 +33,9 @@ public open class Evaluator <: Visitor<Value> {
 
     public init(recordsMap: Map<Node, ActivationRecords>, program: Program) {
         this.recordsMap = recordsMap
-        recordsStack.add(recordsMap.get(program).getOrThrow())
-        curRecords = recordsMap.get(program).getOrThrow()
+        let globalRecords = recordsMap.get(program).getOrThrow()
+        recordsStack.add(globalRecords)
+        curRecords = globalRecords
     }
 
     public open override func visit(_: Program): Value {
@@ -366,21 +368,22 @@ public open class Evaluator <: Visitor<Value> {
 
     // TODO : problem：是否要先遍历一次ast把access link构建好？
     // TODO : 小心！如果break和continue出块了要更新recordStack和curRecords
-    var id = 0;
     public open override func visit(block: Block): Value {
-        //println(recordsStack.size)
-        // 加入活动记录
         var newRecords: ActivationRecords
+        // 保存进入 Block 之前的环境，用于最后恢复
+        let previousRecords = curRecords
+        let previousStackSize = recordsStack.size
+
         if (recordsStack.isEmpty()) {
-            //newRecords = BlockActivationRecords(id.toString(), None, None)
-            newRecords = recordsMap.get(block).getOrThrow()
+            newRecords = BlockActivationRecords(recordsMap.get(block).getOrThrow())
         } else {
             var last = recordsStack.peek()
-            //newRecords = BlockActivationRecords(id.toString(), last, last)
-            newRecords = recordsMap.get(block).getOrThrow()
+            let template = recordsMap.get(block).getOrThrow()
+            newRecords = BlockActivationRecords(template)
             newRecords.controlLink = last
+            newRecords.accessLink = last // 静态链指向当前环境
         }
-        id++;
+
         recordsStack.add(newRecords)
         curRecords = newRecords
 
@@ -388,10 +391,14 @@ public open class Evaluator <: Visitor<Value> {
         for (stmt in block.nodes.iterator()) {
             ret = stmt.traverse(this)
         }
-        if (let Some(last) <- recordsStack.remove()) {
-            curRecords = last
+
+        // 强制恢复到进入 Block 之前的状态
+        // 因为 VarDecl 可能在栈顶压入了多个新的 Scope，所以不能只弹出一个
+        while (recordsStack.size > previousStackSize) {
+            recordsStack.remove()
         }
-        //println(recordsStack.size)
+        curRecords = previousRecords
+
         return ret
     }
 
@@ -464,7 +471,7 @@ public open class Evaluator <: Visitor<Value> {
         }
     }
 
-    private func visitLibFunc(call : CallExpr): Value{
+    private func visitLibFunc(call: CallExpr): Value {
         match (call.callee) {
             case ref: RefExpr =>
                 let funcName = ref.identifier.value
@@ -483,7 +490,6 @@ public open class Evaluator <: Visitor<Value> {
                             case Value.VUnit => println("()")
                             case Value.VFunction(f) => println("<Function>")
                             case Value.VMain(f) => println("<Function main>")
-                            
                         }
                         return Value.VUnit
                     case _ => throw UnhandledTokenKind("Unhandled Lib Function: ${funcName}")
@@ -493,76 +499,91 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(call: CallExpr): Value {
-        // callee 是 RefExpr
-        if(isLibFunc(call)){
+        if (isLibFunc(call)) {
             return visitLibFunc(call)
         }
+
         let calleeValue = call.callee.traverse(this)
         let calleeBlock: Block
+        var closureEnv: ?ActivationRecords = None
+        var isMainCall = false
+
         match (calleeValue) {
             case Value.VFunction(fv) =>
-            if(let Some(theBlock) <- fv.funcDecl.block){
-                calleeBlock = theBlock
-            } else {
-                throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "调用的函数没有body", fv.funcDecl);
-            }
-            case Value.VMain(mv) => calleeBlock = mv.mainDecl.block
-            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "试图调用一个非函数值", call);
+                if (let Some(theBlock) <- fv.funcDecl.block) {
+                    calleeBlock = theBlock
+                    closureEnv = fv.capturedEnv
+                } else {
+                    throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "No Body", fv.funcDecl)
+                }
+            case Value.VMain(mv) =>
+                calleeBlock = mv.mainDecl.block
+                isMainCall = true
+            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "Not Func", call)
         }
 
-        // 切换为函数内的作用域，拿到活动记录，同时记录现在的栈的情况
-        var lastRecords = curRecords;
-        var lastStackSize : Int64 = recordsStack.size; 
+        // 1. 计算参数 (在旧环境中)
+        let actualArgumentsValue = ArrayList<Value>()
+        for (arg in call.arguments) {
+            actualArgumentsValue.add(arg.traverse(this))
+        }
+
+        // 保存环境用于恢复
+        let previousRecords = curRecords
+        let previousStackSize = recordsStack.size
+
         let funcRecords: FuncActivationRecords
-        if (let Some(calleeRecords) <- recordsMap.get(calleeBlock)) {
-            funcRecords = match (calleeRecords) {
-                case fr: FuncActivationRecords => fr
-                case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "试图调用一个非函数值", call);
+        if (let Some(templateRecords) <- recordsMap.get(calleeBlock)) {
+            funcRecords = match (templateRecords) {
+                case fr: FuncActivationRecords => FuncActivationRecords(fr)
+                case _ => throw Exception("Type mismatch")
             }
-            curRecords = calleeRecords
-            recordsStack.add(calleeRecords)
+
+            // 2. 恢复闭包环境
+            if (!isMainCall) {
+                if (closureEnv.isSome()) {
+                    funcRecords.accessLink = closureEnv
+                } else {
+                    funcRecords.accessLink = templateRecords.accessLink
+                }
+            }
+
+            funcRecords.controlLink = curRecords
+
+            // 切换环境
+            curRecords = funcRecords
+            recordsStack.add(funcRecords)
         } else {
-            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "未定义的函数调用", call);
+            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "Undefined func", call)
         }
 
-        // 传递参数
-        let actualArguments: ArrayList<Argument> = call.arguments
-        let actualArgumentsValue: ArrayList<Value> = ArrayList<Value>()
-        for (arg in actualArguments) {
-            let val: Value = arg.traverse(this)
-            actualArgumentsValue.add(val)
-        }
-
+        // 3. 绑定参数
         funcRecords.assignParams(actualArgumentsValue, call)
 
-
-        // 如果函数体为空就报错
-        if(calleeBlock.nodes.isEmpty()) {
-            throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "调用的函数没有body", call);
-        }
-        // 执行函数体
-        // TODO: 这里是否要捕捉while break
-        // TODO: 这里好像要捕捉return
-        var returnValue : Value;
-        try{
-            returnValue = calleeBlock.traverse(this)
-        } catch(){
-
-        }
-            // 恢复调用前的作用域
-            // 检查返回值类型
-            while (lastStackSize < recordsStack.size) {
-                recordsStack.remove()
+        var returnValue: Value = Value.VUnit
+        try {
+            // 手动遍历，不触发 visit(Block)
+            for (stmt in calleeBlock.nodes) {
+                returnValue = stmt.traverse(this)
             }
-            curRecords = lastRecords
-        
+        } catch (re: ReturnException) {
+            returnValue = re.returnValue
+        }
+
+        // 恢复栈 (可能函数体内部也有 VarDecl 改变了栈深，所以用 while remove)
+        while (recordsStack.size > previousStackSize) {
+            recordsStack.remove()
+        }
+        curRecords = previousRecords
 
         return returnValue
-
     }
 
-    public open override func visit(_: ReturnExpr): Value {
-        throw UnsupportedException("Unimplemented method for Visitor : Return Expression")
+    public open override func visit(returnExpr: ReturnExpr): Value {
+        throw ReturnException(match (returnExpr.expr) {
+            case Some(e) => e.traverse(this)
+            case None => Value.VUnit
+        })
     }
 
     // 这个想法不错啊，故意抛出错误，在while块中catch
@@ -579,7 +600,6 @@ public open class Evaluator <: Visitor<Value> {
 
     public open override func visit(decl: VarDecl): Value {
         var exp_val: ?Value = None;
-
         if (let Some(exp) <- decl.initializer) {
             exp_val = exp.traverse(this)
         }
@@ -587,21 +607,49 @@ public open class Evaluator <: Visitor<Value> {
         var varName: String = decl.identifier.value;
         var newRecord: Record = Record(decl.identifier, exp_val, decl.declType, decl.keyword, decl);
 
-        if (let Some(curRecords) <- curRecords) {
-            // 重复定义
-            curRecords.addRecord(varName, newRecord, decl);
+        // 获取当前环境
+        if (let Some(current) <- curRecords) {
+            // 创建一个新的 Scope，作为当前 Scope 的子 Scope
+            // Static Link (accessLink) 指向 current
+            // Control Link 指向 current.controlLink (保持调用链不变)
+            let chainedScope = BlockActivationRecords(
+                "scope_" + varName,
+                current.controlLink,
+                current // Access Link 指向旧的 current
+            )
+
+            // 将变量添加到这个新 Scope 中
+            chainedScope.addRecord(varName, newRecord, decl)
+
+            // 替换栈顶元素：
+            // 1. 移除旧的栈顶 (current)
+            recordsStack.remove()
+            // 2. 压入新的栈顶 (chainedScope)
+            recordsStack.add(chainedScope)
+
+            // 更新 curRecords
+            curRecords = chainedScope
         }
 
-        var ret = Value.VUnit;
-        return ret;
+        return Value.VUnit;
     }
 
     public open override func visit(_: FuncParam): Value {
         throw UnsupportedException("Unimplemented method for Visitor : Function Paramters")
     }
 
-    public open override func visit(_: FuncDecl): Value {
-        return Value.VUnit;
+    public open override func visit(funcDecl: FuncDecl): Value {
+        let capturedEnv = curRecords // 捕获当前环境
+        let funcVal = Value.from(FuncValue(funcDecl, capturedEnv))
+        let funcName = funcDecl.identifier.value
+        let newRecord = Record(funcDecl.identifier, Some(funcVal), None, funcDecl.keyword, funcDecl)
+
+        // 函数声明通常不需要开启新Scope，直接加到当前Scope即可
+        // 这样递归调用时能找到自己
+        if (let Some(current) <- curRecords) {
+            current.addRecord(funcName, newRecord, funcDecl)
+        }
+        return Value.VUnit
     }
 
     public open override func visit(_: MainDecl): Value {

@@ -1,5 +1,5 @@
-func f(){}
+func f() {}
 
-main(){
+main() {
     1
 }
