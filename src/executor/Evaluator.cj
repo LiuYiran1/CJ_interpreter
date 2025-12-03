@@ -45,10 +45,7 @@ public open class Evaluator <: Visitor<Value> {
             case None => throw Exception("Evaluator initialized incorrectly")
         }
 
-        // =========================================================
-        // 第一遍扫描 (Pass 1): 注册/更新全局函数
-        // 允许全局变量初始化表达式调用任何全局函数
-        // =========================================================
+        // 注册/更新全局函数
         for (decl in program.decls) {
             match (decl) {
                 case funcDecl: FuncDecl =>
@@ -83,13 +80,11 @@ public open class Evaluator <: Visitor<Value> {
             }
         }
 
-        // =========================================================
-        // 第二遍扫描 (Pass 2): 顺序初始化全局变量
-        // =========================================================
+        // 初始化全局变量
         for (decl in program.decls) {
             match (decl) {
                 case varDecl: VarDecl =>
-                    // 1. 检查是否有初始化表达式
+                    // 检查是否有初始化表达式
                     let initExpr = match (varDecl.initializer) {
                         case Some(e) => e
                         case None => throw CjcjRuntimeErrorWithLocation(
@@ -99,14 +94,12 @@ public open class Evaluator <: Visitor<Value> {
                         )
                     }
 
-                    // 2. 执行初始化表达式
+                    // 执行初始化表达式
                     // 此时 curRecords 是 GlobalRecords。
                     // 只能访问之前已定义的变量（因为之后的还没加到 items 里）
-                    // 可以访问所有函数（因为 Pass 1 已经加完了）
                     let initVal = initExpr.traverse(this)
 
-                    // 3. 注册全局变量
-                    // 注意：AccessLinkBuilder 跳过了 VarDecl，所以这里我们可以直接 addRecord
+                    // 注册全局变量
                     let varName = varDecl.identifier.value
                     let record = Record(
                         varDecl.identifier,
@@ -122,16 +115,10 @@ public open class Evaluator <: Visitor<Value> {
             }
         }
 
-        // =========================================================
-        // 执行 Main 函数
-        // =========================================================
-
-        // 1. 查找 main
-        // 因为 Pass 1 已经注册了，这里直接查
         let mainValue = try {
             globalRecords.getStaticValue("main", program)
         } catch (e: CjcjRuntimeErrorWithLocation) {
-            // 如果没找到 main，视作业要求决定是否报错
+            // 如果没找到 main
             return Value.VUnit
         }
 
@@ -140,8 +127,7 @@ public open class Evaluator <: Visitor<Value> {
             case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "main 不是 Main 类型", program)
         }
 
-        // 2. 执行 Main Block
-        // 为 main 创建一个独立的栈帧，虽然它没有参数
+        // Main Block
         let mainStackFrame = FuncActivationRecords(
             "main",
             globalRecords, // Access Link -> Global
@@ -149,7 +135,7 @@ public open class Evaluator <: Visitor<Value> {
             program,
             true // isMain
         )
-        // Main 的动态链指向 Global (或者 None，取决于是否希望 main return 后回到 global)
+        // Main 的动态链指向 Global
         mainStackFrame.controlLink = globalRecords
 
         // 切换环境
@@ -471,27 +457,133 @@ public open class Evaluator <: Visitor<Value> {
         }
     }
 
+    // 比较两个类型节点是否相等
+    private func areTypesEqual(t1: TypeNode, t2: TypeNode): Bool {
+        match ((t1, t2)) {
+            case (p1: PrimitiveType, p2: PrimitiveType) => return p1.typeName.value == p2.typeName.value
+
+            case (r1: RefType, r2: RefType) => return r1.typeName.value == r2.typeName.value
+
+            case (f1: FuncType, f2: FuncType) =>
+                // 参数个数
+                if (f1.paramTypes.size != f2.paramTypes.size) {
+                    return false
+                }
+                // 2. 每个参数的类型
+                for (i in 0..f1.paramTypes.size) {
+                    if (!areTypesEqual(f1.paramTypes[i], f2.paramTypes[i])) {
+                        return false
+                    }
+                }
+                // 3. 返回值类型
+                return areTypesEqual(f1.returnType, f2.returnType)
+
+            case _ => return false
+        }
+    }
+
+    // 检查两个函数声明的签名是否匹配 (参数列表 + 返回值)
+    private func checkFuncTypeMatch(targetDecl: FuncDecl, sourceDecl: FuncDecl, node: Node): Unit {
+        // 检查返回值类型
+        match ((targetDecl.declType, sourceDecl.declType)) {
+            case (Some(t1), Some(t2)) =>
+                if (!areTypesEqual(t1, t2)) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.ASSIGN_TYPE_MISMATCH,
+                        "函数返回值类型不匹配",
+                        node
+                    )
+                }
+            case (None, None) => () // 都是 Unit
+            case _ => throw CjcjRuntimeErrorWithLocation(
+                ErrorCode.ASSIGN_TYPE_MISMATCH,
+                "函数返回值类型不匹配 (一个是 Unit，一个不是)",
+                node
+            )
+        }
+
+        // 检查参数个数
+        if (targetDecl.params.size != sourceDecl.params.size) {
+            throw CjcjRuntimeErrorWithLocation(
+                ErrorCode.ASSIGN_TYPE_MISMATCH,
+                "函数参数个数不匹配: 期望 ${targetDecl.params.size}, 实际 ${sourceDecl.params.size}",
+                node
+            )
+        }
+
+        // 检查参数类型
+        for (i in 0..targetDecl.params.size) {
+            let p1Type = targetDecl.params[i].paramType
+            let p2Type = sourceDecl.params[i].paramType
+
+            if (!areTypesEqual(p1Type, p2Type)) {
+                throw CjcjRuntimeErrorWithLocation(
+                    ErrorCode.ASSIGN_TYPE_MISMATCH,
+                    "第 ${i + 1} 个参数类型不匹配",
+                    node
+                )
+            }
+        }
+    }
+
+    private func isUnitType(t: TypeNode): Bool {
+        match (t) {
+            case p: PrimitiveType => return p.typeName.value == "Unit"
+            case _ => return false
+        }
+    }
+
     public open override func visit(expr: AssignExpr): Value {
         let left_name: String = match (expr.left) {
             case ref: RefExpr => ref.identifier.value
-            case _ => throw UnhandledTokenKind("赋值表达式左边不太对啊")
-        }
-        let right = expr.right.traverse(this);
-        if (let Some(curRecords) <- curRecords) {
-            // 修改：传入初始 isNonLocal = false
-            curRecords.setStaticRecord(left_name, right, expr, false);
-        } else {
-            throw Exception();
+            case _ => throw UnhandledTokenKind("赋值表达式左边必须是标识符")
         }
 
-        return Value.VUnit;
+        let right_val = expr.right.traverse(this)
+
+        if (let Some(curRecords) <- curRecords) {
+            // 获取记录
+            let oldRecord = curRecords.getStaticRecord(left_name, expr, false)
+
+            // 类型检查
+            // 是函数的话就要参数数量类型和返回值类型相同
+            match (oldRecord.value) {
+                case Some(Value.VFunction(oldFuncVal)) => match (right_val) {
+                    case Value.VFunction(newFuncVal) => checkFuncTypeMatch(oldFuncVal.funcDecl, newFuncVal.funcDecl,
+                        expr)
+                    case _ => throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.ASSIGN_TYPE_MISMATCH,
+                        "不能将非函数值赋值给函数类型的变量",
+                        expr
+                    )
+                }
+                case Some(_) =>
+                    // 如果原本不是函数，但新赋值是函数
+                    match (right_val) {
+                    case Value.VFunction(_) => throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.ASSIGN_TYPE_MISMATCH,
+                        "不能将函数赋值给非函数类型的变量",
+                        expr
+                    )
+                    //TODO：这里的设计可以优化的
+                    case _ => () // 普通变量赋值封装在Record里面
+                }
+                case None => () // 变量未初始化
+            }
+
+            // 执行赋值
+            curRecords.setStaticRecord(left_name, right_val, expr, false)
+        } else {
+            throw Exception("No active records")
+        }
+
+        return Value.VUnit
     }
 
     public open override func visit(ref: RefExpr): Value {
         match (ref.identifier.kind) {
             case TokenKind.IDENTIFIER =>
                 if (let Some(curRecords) <- curRecords) {
-                    // 这里调用的 getStaticValue 内部会处理 isNonLocal 逻辑
                     return curRecords.getStaticValue(ref.identifier.value, ref);
                 } else {
                     throw Exception();
@@ -527,7 +619,6 @@ public open class Evaluator <: Visitor<Value> {
         }
 
         // 强制恢复到进入 Block 之前的状态
-        // 因为 VarDecl 可能在栈顶压入了多个新的 Scope，所以不能只弹出一个
         while (recordsStack.size > previousStackSize) {
             recordsStack.remove()
         }
@@ -632,13 +723,75 @@ public open class Evaluator <: Visitor<Value> {
         }
     }
 
+    // 检查 Value 的类型是否与声明的 TypeNode 匹配
+    private func checkValueTypeMatch(val: Value, typeNode: TypeNode): Bool {
+        match (typeNode) {
+            case pt: PrimitiveType => match (pt.typeName.value) {
+                case "Int64" => match (val) {
+                    case VInteger(_) => true;
+                    case _ => false
+                }
+                case "Bool" => match (val) {
+                    case VBoolean(_) => true;
+                    case _ => false
+                }
+                case "Unit" => match (val) {
+                    case VUnit => true;
+                    case _ => false
+                }
+                case "String" => match (val) {
+                    case VString(_) => true;
+                    case _ => false
+                }
+                case _ => false
+            }
+
+            case ft: FuncType => match (val) {
+                case Value.VFunction(funcVal) =>
+                    let decl = funcVal.funcDecl
+
+                    // 参数个数
+                    if (decl.params.size != ft.paramTypes.size) {
+                        return false
+                    }
+
+                    // 参数类型
+                    for (i in 0..decl.params.size) {
+                        // decl.params[i].paramType 是 AST 中定义的参数类型
+                        // ft.paramTypes[i] 是目标函数类型的参数类型
+                        if (!areTypesEqual(decl.params[i].paramType, ft.paramTypes[i])) {
+                            return false
+                        }
+                    }
+
+                    // 返回值类型
+                    match (decl.declType) {
+                        case Some(declRetType) =>
+                            // 函数声明有返回值，比较它和目标类型返回值
+                            return areTypesEqual(declRetType, ft.returnType)
+                        case None => return isUnitType(ft.returnType)
+                    }
+
+                case _ => false // 如果期望函数类型，但给的不是函数值
+            }
+
+            case rt: RefType =>
+                // TODO：这里目前将RefType视作true
+                true
+
+            case _ => false
+        }
+    }
+
     public open override func visit(call: CallExpr): Value {
         if (isLibFunc(call)) {
             return visitLibFunc(call)
         }
 
         let calleeValue = call.callee.traverse(this)
+
         let calleeBlock: Block
+        let funcDecl: FuncDecl
         var closureEnv: ?ActivationRecords = None
         var isMainCall = false
 
@@ -646,23 +799,79 @@ public open class Evaluator <: Visitor<Value> {
             case Value.VFunction(fv) =>
                 if (let Some(theBlock) <- fv.funcDecl.block) {
                     calleeBlock = theBlock
+                    funcDecl = fv.funcDecl
                     closureEnv = fv.capturedEnv
                 } else {
-                    throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "No Body", fv.funcDecl)
+                    throw CjcjRuntimeErrorWithLocation(ErrorCode.FUNC_MISSING_BODY, "函数无体", fv.funcDecl)
                 }
             case Value.VMain(mv) =>
                 calleeBlock = mv.mainDecl.block
+                // 构造一个假的 FuncDecl 用于统一处理，或者特殊处理 Main
+                // Main 通常没有参数和返回值，这里简单处理
+                // 注意：如果 Main 有特殊逻辑，需分开写
+                // 这里为了复用逻辑，假设 Main 是特殊的 FuncDecl
                 isMainCall = true
-            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "Not Func", call)
+
+                // Main 特例处理
+                let mainStackFrame = FuncActivationRecords(
+                    "main",
+                    match (curRecords) {
+                        case Some(r) => r;
+                        case None => throw Exception("No Global")
+                    },
+                    None,
+                    mv.mainDecl,
+                    true
+                )
+                mainStackFrame.controlLink = curRecords
+                let oldRecords = curRecords
+                curRecords = mainStackFrame
+                recordsStack.add(mainStackFrame)
+                var ret = Value.VUnit
+                try {
+                    for (stmt in calleeBlock.nodes) {
+                        ret = stmt.traverse(this)
+                    }
+                } catch (re: ReturnException) {
+                    ret = re.returnValue
+                }
+                recordsStack.remove()
+                curRecords = oldRecords
+                return ret
+
+            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "试图调用非函数", call)
         }
 
-        // 1. 计算参数 (在旧环境中)
+        // 检查参数个数
+        if (funcDecl.params.size != call.arguments.size) {
+            throw CjcjRuntimeErrorWithLocation(
+                ErrorCode.CALL_ARG_COUNT_MISMATCH,
+                "函数参数个数不匹配: 期望 ${funcDecl.params.size}, 实际 ${call.arguments.size}",
+                call
+            )
+        }
+
+        // 依次计算实参并检查类型 (即时检查)
         let actualArgumentsValue = ArrayList<Value>()
-        for (arg in call.arguments) {
-            actualArgumentsValue.add(arg.traverse(this))
+        for (i in 0..call.arguments.size) {
+            let argExpr = call.arguments[i]
+            let paramDecl = funcDecl.params[i]
+
+            // 计算实参值
+            let argValue = argExpr.traverse(this)
+
+            // 注意：在 argExpr 处报错
+            if (!checkValueTypeMatch(argValue, paramDecl.paramType)) {
+                throw CjcjRuntimeErrorWithLocation(
+                    ErrorCode.CALL_ARG_TYPE_MISMATCH,
+                    "第 ${i + 1} 个参数类型不匹配",
+                    argExpr // 报错位置在实参表达式
+                )
+            }
+
+            actualArgumentsValue.add(argValue)
         }
 
-        // 保存环境用于恢复
         let previousRecords = curRecords
         let previousStackSize = recordsStack.size
 
@@ -670,33 +879,32 @@ public open class Evaluator <: Visitor<Value> {
         if (let Some(templateRecords) <- recordsMap.get(calleeBlock)) {
             funcRecords = match (templateRecords) {
                 case fr: FuncActivationRecords => FuncActivationRecords(fr)
-                case _ => throw Exception("Type mismatch")
+                case _ => throw Exception("Records map type mismatch")
             }
 
-            // 2. 恢复闭包环境
-            if (!isMainCall) {
-                if (closureEnv.isSome()) {
-                    funcRecords.accessLink = closureEnv
-                } else {
-                    funcRecords.accessLink = templateRecords.accessLink
-                }
+            // 设置静态父级 (闭包环境)
+            if (closureEnv.isSome()) {
+                funcRecords.accessLink = closureEnv
+            } else {
+                // 如果没有闭包环境（例如全局函数），使用模板的或者 fallback
+                funcRecords.accessLink = templateRecords.accessLink
             }
 
             funcRecords.controlLink = curRecords
 
-            // 切换环境
             curRecords = funcRecords
             recordsStack.add(funcRecords)
         } else {
-            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "Undefined func", call)
+            throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "Undefined func execution context", call)
         }
 
-        // 3. 绑定参数
+        // 绑定参数 (定义不可变变量)
         funcRecords.assignParams(actualArgumentsValue, call)
 
+        // 执行函数体
         var returnValue: Value = Value.VUnit
         try {
-            // 手动遍历，不触发 visit(Block)
+            // 手动遍历 Block!怕又多压一次栈
             for (stmt in calleeBlock.nodes) {
                 returnValue = stmt.traverse(this)
             }
@@ -704,7 +912,20 @@ public open class Evaluator <: Visitor<Value> {
             returnValue = re.returnValue
         }
 
-        // 恢复栈 (可能函数体内部也有 VarDecl 改变了栈深，所以用 while remove)
+        // 检查返回值类型匹配
+        // 若返回值类型与函数声明的返回类型不匹配，则在函数定义 FuncDecl 处报错
+        if (let Some(returnTypeNode) <- funcDecl.declType) {
+            // 检查 returnValue 是否匹配 returnTypeNode
+            if (!checkValueTypeMatch(returnValue, returnTypeNode)) {
+                throw CjcjRuntimeErrorWithLocation(
+                    ErrorCode.FUNC_RETURN_TYPE_MISMATCH,
+                    "函数返回值类型不匹配",
+                    funcDecl // 报错位置在函数定义处
+                )
+            }
+        }
+
+        // 恢复栈
         while (recordsStack.size > previousStackSize) {
             recordsStack.remove()
         }
@@ -743,25 +964,17 @@ public open class Evaluator <: Visitor<Value> {
 
         // 获取当前环境
         if (let Some(current) <- curRecords) {
-            // 创建一个新的 Scope，作为当前 Scope 的子 Scope
-            // Static Link (accessLink) 指向 current
-            // Control Link 指向 current.controlLink (保持调用链不变)
             let chainedScope = BlockActivationRecords(
                 "scope_" + varName,
                 current.controlLink,
                 current // Access Link 指向旧的 current
             )
 
-            // 将变量添加到这个新 Scope 中
             chainedScope.addRecord(varName, newRecord, decl)
 
-            // 替换栈顶元素：
-            // 1. 移除旧的栈顶 (current)
             recordsStack.remove()
-            // 2. 压入新的栈顶 (chainedScope)
             recordsStack.add(chainedScope)
 
-            // 更新 curRecords
             curRecords = chainedScope
         }
 

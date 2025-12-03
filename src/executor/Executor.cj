@@ -37,17 +37,15 @@ public class Executor {
     private func buildAccessLink(program: Program): Map<Node, ActivationRecords> {
         let linkBuilder = AccessLinkBuilder()
         var recordsMap = linkBuilder.buildAccessLink(program)
-        linkBuilder.debugPrint()
+        //linkBuilder.debugPrint()
         return recordsMap
     }
 
     private func lab2SimpleEvaluation(program: Program): Int64 {
         try {
-            // 1. 构建 Evaluator
             let evaluator = Evaluator(buildAccessLink(program), program)
 
-            // 2. 直接访问 program 节点
-            // 所有的全局变量初始化、函数注册、Main查找与执行，都封装在 Evaluator.visit(Program) 中
+            // 访问 program 节点
             let val = evaluator.visit(program)
 
             println(val.toValueString())
@@ -56,7 +54,6 @@ public class Executor {
             eprintln(e)
             return 1
         } catch (e: ReturnException) {
-            // 如果 main 中有 return 语句抛出异常
             println(e.returnValue.toValueString())
             return 0
         } catch (e: Exception) {
