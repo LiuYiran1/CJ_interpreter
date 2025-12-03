@@ -38,8 +38,140 @@ public open class Evaluator <: Visitor<Value> {
         curRecords = globalRecords
     }
 
-    public open override func visit(_: Program): Value {
-        throw UnsupportedException("Unimplemented method for Visitor : Program")
+    public open override func visit(program: Program): Value {
+        // 1. 获取全局作用域 (在 init 中已经压入栈顶)
+        let globalRecords = match (curRecords) {
+            case Some(r) => r
+            case None => throw Exception("Evaluator initialized incorrectly")
+        }
+
+        // =========================================================
+        // 第一遍扫描 (Pass 1): 注册/更新全局函数
+        // 允许全局变量初始化表达式调用任何全局函数
+        // =========================================================
+        for (decl in program.decls) {
+            match (decl) {
+                case funcDecl: FuncDecl =>
+                    // AccessLinkBuilder 可能已经添加了 Record，但那个 FuncValue 的 env 是 None。
+                    // 我们需要创建一个带有当前 GlobalEnv 的新 FuncValue。
+
+                    let capturedEnv = globalRecords // 全局函数的环境就是 Global
+                    let funcVal = Value.from(FuncValue(funcDecl, capturedEnv))
+
+                    // 更新或添加
+                    let funcName = funcDecl.identifier.value
+                    let newRecord = Record(funcDecl.identifier, Some(funcVal), None, funcDecl.keyword, funcDecl)
+
+                    // 因为 AccessLinkBuilder 已经加过一次了，这里用 update 或者覆盖
+                    if (globalRecords.items.contains(funcName)) {
+                        globalRecords.items[funcName] = newRecord
+                    } else {
+                        globalRecords.addRecord(funcName, newRecord, funcDecl)
+                    }
+
+                case mainDecl: MainDecl =>
+                    // Main 同理
+                    let mainVal = Value.from(MainValue(mainDecl))
+                    let record = Record(mainDecl.identifier, Some(mainVal), None, mainDecl.keyword, mainDecl)
+
+                    if (globalRecords.items.contains("main")) {
+                        globalRecords.items["main"] = record
+                    } else {
+                        globalRecords.addRecord("main", record, mainDecl)
+                    }
+                case _ => ()
+            }
+        }
+
+        // =========================================================
+        // 第二遍扫描 (Pass 2): 顺序初始化全局变量
+        // =========================================================
+        for (decl in program.decls) {
+            match (decl) {
+                case varDecl: VarDecl =>
+                    // 1. 检查是否有初始化表达式
+                    let initExpr = match (varDecl.initializer) {
+                        case Some(e) => e
+                        case None => throw CjcjRuntimeErrorWithLocation(
+                            ErrorCode.GLOBAL_NO_INITIALIZER,
+                            "全局变量必须带有初始化表达式",
+                            varDecl
+                        )
+                    }
+
+                    // 2. 执行初始化表达式
+                    // 此时 curRecords 是 GlobalRecords。
+                    // 只能访问之前已定义的变量（因为之后的还没加到 items 里）
+                    // 可以访问所有函数（因为 Pass 1 已经加完了）
+                    let initVal = initExpr.traverse(this)
+
+                    // 3. 注册全局变量
+                    // 注意：AccessLinkBuilder 跳过了 VarDecl，所以这里我们可以直接 addRecord
+                    let varName = varDecl.identifier.value
+                    let record = Record(
+                        varDecl.identifier,
+                        Some(initVal),
+                        varDecl.declType,
+                        varDecl.keyword,
+                        varDecl
+                    )
+
+                    globalRecords.addRecord(varName, record, varDecl)
+
+                case _ => ()
+            }
+        }
+
+        // =========================================================
+        // 执行 Main 函数
+        // =========================================================
+
+        // 1. 查找 main
+        // 因为 Pass 1 已经注册了，这里直接查
+        let mainValue = try {
+            globalRecords.getStaticValue("main", program)
+        } catch (e: CjcjRuntimeErrorWithLocation) {
+            // 如果没找到 main，视作业要求决定是否报错
+            return Value.VUnit
+        }
+
+        let mainBlock = match (mainValue) {
+            case Value.VMain(mv) => mv.mainDecl.block
+            case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "main 不是 Main 类型", program)
+        }
+
+        // 2. 执行 Main Block
+        // 为 main 创建一个独立的栈帧，虽然它没有参数
+        let mainStackFrame = FuncActivationRecords(
+            "main",
+            globalRecords, // Access Link -> Global
+            None,
+            program,
+            true // isMain
+        )
+        // Main 的动态链指向 Global (或者 None，取决于是否希望 main return 后回到 global)
+        mainStackFrame.controlLink = globalRecords
+
+        // 切换环境
+        let oldRecords = curRecords
+        curRecords = mainStackFrame
+        recordsStack.add(mainStackFrame)
+
+        var ret = Value.VUnit
+        try {
+            // 手动遍历，避免 visit(Block) 创建额外层级
+            for (stmt in mainBlock.nodes) {
+                ret = stmt.traverse(this)
+            }
+        } catch (re: ReturnException) {
+            ret = re.returnValue
+        }
+
+        // 恢复环境
+        recordsStack.remove()
+        curRecords = oldRecords
+
+        return ret
     }
 
     private func getTypeMisErrorCode(op: TokenKind): ErrorCode {
@@ -346,7 +478,8 @@ public open class Evaluator <: Visitor<Value> {
         }
         let right = expr.right.traverse(this);
         if (let Some(curRecords) <- curRecords) {
-            curRecords.setStaticRecord(left_name, right, expr);
+            // 修改：传入初始 isNonLocal = false
+            curRecords.setStaticRecord(left_name, right, expr, false);
         } else {
             throw Exception();
         }
@@ -358,6 +491,7 @@ public open class Evaluator <: Visitor<Value> {
         match (ref.identifier.kind) {
             case TokenKind.IDENTIFIER =>
                 if (let Some(curRecords) <- curRecords) {
+                    // 这里调用的 getStaticValue 内部会处理 isNonLocal 逻辑
                     return curRecords.getStaticValue(ref.identifier.value, ref);
                 } else {
                     throw Exception();

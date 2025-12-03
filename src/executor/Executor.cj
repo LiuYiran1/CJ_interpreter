@@ -42,33 +42,28 @@ public class Executor {
     }
 
     private func lab2SimpleEvaluation(program: Program): Int64 {
-        let mainDecl = (program
-            .decls
-            .iterator()
-            .filter({it => it is MainDecl})
-            .first()
-            .getOrThrow() as MainDecl)
-            .getOrThrow()
-
         try {
+            // 1. 构建 Evaluator
             let evaluator = Evaluator(buildAccessLink(program), program)
-            var val: Value
-            try {
-                val = evaluator.visit(mainDecl.block)
-            } catch (re: ReturnException) {
-                val = re.returnValue
-            }
+
+            // 2. 直接访问 program 节点
+            // 所有的全局变量初始化、函数注册、Main查找与执行，都封装在 Evaluator.visit(Program) 中
+            let val = evaluator.visit(program)
+
             println(val.toValueString())
-            0
+            return 0
         } catch (e: CjcjRuntimeErrorWithLocation) {
             eprintln(e)
-            1
+            return 1
+        } catch (e: ReturnException) {
+            // 如果 main 中有 return 语句抛出异常
+            println(e.returnValue.toValueString())
+            return 0
         } catch (e: Exception) {
-            // This is not expected to happen. There should be no exceptions falling into this branch at the time of the last commit.
             eprintln("\n\n!!! unhandled exception !!!")
             eprintln(e.toString())
             e.printStackTrace()
-            1
+            return 1
         }
     }
 

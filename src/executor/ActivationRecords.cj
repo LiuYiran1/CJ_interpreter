@@ -2,6 +2,7 @@ package cjcj.executor
 
 import std.collection.*
 import cjcj.visitor.*
+import cjcj.scanner.*
 
 public abstract class ActivationRecords {
     public var name: ?String
@@ -30,19 +31,35 @@ public abstract class ActivationRecords {
         this.items = HashMap<String, Record>()
     }
 
-    /** ---------------- 静态作用域查找 ---------------- */
-    public func getStaticRecord(name: String, node: Node): Record {
+    public func getStaticRecord(name: String, node: Node, isNonLocal: Bool): Record {
         if (items.contains(name)) {
-            return items[name]
+            let record = items[name]
+            // 【新增检查】如果是在非局部作用域（跨越了函数边界）且变量是 VAR (可变)，则报错
+            if (isNonLocal && record.keyword.kind == TokenKind.VAR) {
+                throw CjcjRuntimeErrorWithLocation(
+                    ErrorCode.FUNC_USE_MUTABLE_NONLOCAL,
+                    "内层函数不允许访问外层函数的可变非局部变量：${name}",
+                    node
+                )
+            }
+            return record
         } else if (let Some(last) <- accessLink) {
-            return last.getStaticRecord(name, node)
+            // 判断下一次查找是否视为“非局部”
+            // 如果当前记录是 FuncActivationRecords，说明再往上找就跳出当前函数了
+            var nextIsNonLocal = isNonLocal
+            match (this) {
+                case _: FuncActivationRecords => nextIsNonLocal = true
+                case _ => ()
+            }
+            return last.getStaticRecord(name, node, nextIsNonLocal)
         } else {
             throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "静态作用域下未定义变量：" + name, node)
         }
     }
 
     public func getStaticValue(name: String, node: Node): Value {
-        var record: Record = this.getStaticRecord(name, node)
+        // 初始调用 isNonLocal = false
+        var record: Record = this.getStaticRecord(name, node, false)
         if (let Some(val) <- record.value) {
             return val
         } else {
@@ -50,11 +67,25 @@ public abstract class ActivationRecords {
         }
     }
 
-    public func setStaticRecord(name: String, value: Value, node: Node): Unit {
+    public func setStaticRecord(name: String, value: Value, node: Node, isNonLocal: Bool): Unit {
         if (items.contains(name)) {
+            let record = items[name]
+            // 【新增检查】赋值时同样检查
+            if (isNonLocal && record.keyword.kind == TokenKind.VAR) {
+                throw CjcjRuntimeErrorWithLocation(
+                    ErrorCode.FUNC_USE_MUTABLE_NONLOCAL,
+                    "内层函数不允许访问外层函数的可变非局部变量：${name}",
+                    node
+                )
+            }
             items[name].updateValue(value, node)
         } else if (let Some(last) <- accessLink) {
-            last.setStaticRecord(name, value, node)
+            var nextIsNonLocal = isNonLocal
+            match (this) {
+                case _: FuncActivationRecords => nextIsNonLocal = true
+                case _ => ()
+            }
+            last.setStaticRecord(name, value, node, nextIsNonLocal)
         } else {
             throw CjcjRuntimeErrorWithLocation(ErrorCode.UNDEFINED_VAR, "静态作用域下未定义变量", node)
         }
