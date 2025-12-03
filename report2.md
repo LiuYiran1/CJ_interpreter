@@ -1,4 +1,6 @@
-# 实验报告
+# 实验报告Lab2
+
+## 231250136 刘怡然
 
 ### 代码结构设计
 
@@ -9,7 +11,42 @@
   - 构建每个 AST 节点（主要是 `Block` 和函数定义）的静态父级作用域（Access Link）模板。
   - 也为了实现对于**函数body空块**的识别
 
+- **核心函数**：
+
+  ```cj
+      public func buildAccessLink(program: Program): Map<Node, ActivationRecords> { // 返回每个block及其对应的活动记录模板
+          var globalRecords: ActivationRecords = BlockActivationRecords("Global", None);
+  
+          addLibFunc2GlobalRecords(globalRecords);
+  
+          accessLinkMap.add(program, globalRecords);
+  
+          for (decl in program.decls) {
+              match (decl) {
+                  case mainDecl: MainDecl =>
+                      var mainRecord: Record = Record(mainDecl.identifier, Value.from(MainValue(mainDecl)), None,
+                          mainDecl.keyword, mainDecl);
+                      globalRecords.addRecord(mainDecl.identifier.value, mainRecord, mainDecl);
+                      buildMainAccessLink(mainDecl, globalRecords);
+                  case funcDecl: FuncDecl =>
+                      var funcRecord: Record = Record(funcDecl.identifier, Value.from(FuncValue(funcDecl, None)), None,
+                          funcDecl.keyword, funcDecl);
+                      globalRecords.addRecord(funcDecl.identifier.value, funcRecord, funcDecl);
+                      buildFuncAccessLink(funcDecl, globalRecords);
+                  case varDecl: VarDecl => () // 全局变量在Evaluator中做
+                  case funcParam: FuncParam => ()
+                  case _ => throw UnhandledDeclInAccessLinkBuilder(decl);
+              }
+          }
+  
+          return accessLinkMap;
+      }
+  ```
+
+  
+
 #### 2. 修正 (`src/executor/ActivationRecords.cj`)
+
 修正了 `ActivationRecords` 及其子类 `FuncActivationRecords` 和 `BlockActivationRecords`。
 - 变量查找功能：
   - 能区分 Control Link (动态链) 和 Access Link (静态链)。Control Link 指向调用者，用于函数返回；Access Link 指向定义时的环境，用于变量查找。
@@ -21,71 +58,71 @@
 在 `Value` 枚举中加入了函数的运行时表示：
 - `VFunction(FuncValue)`：
   - `FuncValue` 类中包含 `FuncDecl`（函数定义）和 `capturedEnv`（捕获的闭包环境）。
+  
+    ```cj
+    public class FuncValue <: ToString {
+        public var funcDecl: FuncDecl
+        public var capturedEnv: ?ActivationRecords
+    
+        public init(_funcDecl: FuncDecl, _env: ?ActivationRecords) {
+            this.funcDecl = _funcDecl
+            this.capturedEnv = _env
+        }
+    
+        public override func toString(): String {
+            "func"
+        }
+    }
+    ```
+  
+    
 - `VMain(MainValue)`：用于特殊处理 `main` 函数。
 
 #### 4. Evaluator中的实现 (`src/executor/Evaluator.cj`)
 - 构建全局函数和全局变量：
+  
   - 先 `visitProgram` 注册所有全局函数）。然后再按顺序初始化全局变量。
-- **作用域链式嵌套 (`Scope Chaining`)**：
-  - 在 `visit(VarDecl)` 中，每定义一个变量都会创建一个新的嵌套 `BlockActivationRecords`，替代旧的栈顶记录。这完美解决了同个块内变量定义的顺序可见性问题（防止闭包捕获到“未来”定义的变量）。
+  
+- 作用域链式嵌套：
+  
+  - 在 `visit(VarDecl)` 中，每定义一个变量都会创建一个新的嵌套 `BlockActivationRecords`，替代旧的栈顶记录，这里是因为比如如下样例：
+    ```cj
+    int x = 100
+    main() {
+        // 1. 定义函数 f
+        func f() {
+            println(x) 
+        }
+        
+        var x = 10
+    }
+    ```
+  
+    函数 `f` 不应该捕获到 `x` 所以查找的时候不能仅仅在上一层`Block`中的作用域找，变量的声明应该有顺序
+  
 - 函数调用 (`visit(CallExpr)`)：
-  - 实现了**词法作用域**（Lexical Scoping）：在调用者的环境中计算实参值，然后切换到被调用者的环境（恢复闭包捕获的 Access Link）。
-  - 实现了**即时类型检查**：每计算一个实参立即检查其与形参的类型匹配情况。
-  - 实现了**返回值类型检查**：函数执行结束后检查返回值与声明类型是否一致。
+  - 实现了函数参数类型检查（当前执行到的参数不匹配就立刻抛异常）
+  - 实现了返回值类型检查
+  - 对于 `return` 语句和lab1处理 `while break` 类似，`return` 直接抛出异常，函数在外面 `catch`
 
 #### 5. 变量记录 (`src/executor/Record.cj`)
 - 增强了 `updateValue` 逻辑：
-  - 支持对未初始化变量的首次赋值。
-  - 严格检查 `LET` 和 `FUNC` 类型的不可变性，禁止对函数名和 `let` 变量赋值。
-  - 增加了对函数类型的兼容性检查。
-
-### 支持的功能特性
-
-#### 1. 函数类型的检查与判断
-- 实现了 `areTypesEqual` 和 `checkFuncTypeMatch` / `checkValueTypeMatch` 辅助方法。
-- 支持**高阶函数**的类型检查：不仅检查基础类型，还递归检查函数类型（参数个数、参数类型、返回值类型）的结构等价性。
-- 在赋值表达式 `AssignExpr` 和函数调用 `CallExpr` 中均加入了严格的类型校验。
-
-#### 2. 实现返回值逻辑
-- 使用 `ReturnException` 机制来处理 `return` 语句，能够从深层嵌套的语句块中直接跳出并携带返回值，直到被 `visit(CallExpr)` 捕获。
-
-#### 3. 内置函数保护
-- 在全局定义时强制检查变量名和函数名，禁止重定义内置函数 `println`，否则抛出 `DUPLICATED_DEF`。
+  - 使得 `FUNC` 类型的不可变，从而实现禁止对函数名赋值。
+  - 函数类型检查封装在了`Evaluator`里面，下次应该改到封装到 `updateValue` 中。
 
 ### 我认为的亮点
 
-1.  **闭包的完整实现**：
-    通过在 `Value.VFunction` 中携带 `capturedEnv`，并在函数调用时恢复 `Access Link`，完美实现了闭包特性。使得函数可以作为一等公民传递，且能正确访问定义时的上下文。
+#### 1. 函数类型的兼容
+- 在原本只支持lab1类型的 `Record` 中增加对于函数类型的支持而尽量不修改lab1实现的visit代码，很符合函数是一等公民的概念，对函数的检查也是递归的，所以函数类型及其嵌套嵌套对于visit来说也是透明的，和基本类型一样。
 
-2.  **作用域链式设计 (Scope Chaining)**：
-    在处理 `VarDecl` 时，不只是简单地向当前 Map 添加变量，而是创建新的作用域节点并压栈。这种设计巧妙地解决了**块级作用域中变量声明的顺序性问题**（即声明前的代码无法访问该变量，且闭包不会捕获到该变量声明之后的同名变量）。
-
-3.  **严格的语义安全检查**：
-    实现了非常细致的语义检查，包括：
-    - 禁止修改 `let` 变量、函数名和形参（`ASSIGN_IMMUT_VAR`）。
-    - 禁止内层函数修改外层函数的 `var` 变量（`FUNC_USE_MUTABLE_NONLOCAL`），同时正确排除了全局变量。
-    - 全局变量初始化的顺序依赖检查。
-    - 高阶函数的签名匹配检查。
+#### 2. 实现返回值
+- 使用 `ReturnException` 机制来处理 `return` 语句，能够从深层嵌套的语句块中直接跳出并携带返回值，直到被 `visit(CallExpr)` 捕获，同时也会恢复调用栈。
 
 ### 遇到的问题和解决方案
 
-1.  **问题：递归函数 (`fib`) 执行时变量被覆盖**
-    - **现象**：计算斐波那契数列时，递归调用的内层函数修改了参数 `n`，导致外层函数的 `n` 也变了，计算结果错误。
-    - **原因**：最初的实现中，解释器复用了 `AccessLinkBuilder` 生成的同一个 `ActivationRecords` 对象，导致所有递归层级共享同一个变量表。
-    - **解决方案**：在运行时（`Evaluator`）进入函数或块时，基于静态分析的模板 **`new`** 一个新的 `ActivationRecords` 实例，确保每次调用都有独立的栈帧。1
-
-2.  **问题：动态作用域导致的变量查找错误**
-    - **现象**：函数内部能访问到调用者的局部变量。
-    - **原因**：在 `visit(CallExpr)` 中，错误地将新栈帧的 `accessLink` 指向了 `curRecords`（调用者环境），或者在切换环境后才计算参数表达式。
-    - **解决方案**：
-        1. 严格遵守**词法作用域**规则：新栈帧的 `accessLink` 必须指向闭包捕获的 `capturedEnv`（或全局）。
-        2. 调整执行顺序：先在当前环境（调用者）中计算所有实参的值，然后再切换 `curRecords` 到新函数环境进行参数绑定。
-
-3.  **问题：闭包捕获了“未来”定义的变量**
-    - **现象**：在一个块中，先定义函数 `f`，后定义变量 `x`。调用 `f` 时竟然能访问到 `x`。
-    - **原因**：同一个块内的所有变量都存在同一个 `HashMap` 中，闭包捕获了这个 Map 的引用。
-    - **解决方案**：修改 `visit(VarDecl)`，每定义一个变量就创建一个新的嵌套作用域（BlockRecord），利用链表结构隔离声明前后的环境。
-
-4.  **问题：全局变量 `println` 重名检查失效**
-    - **现象**：用户可以定义 `var println = 1`，导致后续无法调用内置函数。
-    - **解决方案**：在 `visit(Program)` 的初始化循环中，显式添加了对标识符名称是否为 `"println"` 的检查，若重名则抛出 `DUPLICATED_DEF` 异常。
+1.  **问题：一开始的思路是通过一个 AccessLinkBuilder 类将静态的作用域维护好（构建好 AccessLink)同时创建好要使用的活动记录(ActivationRecords)模板，然后在运行时直接把模板拿来使用**
+    - **现象和原因**：在函数递归调用的时候可能会多次创建相同函数的栈帧，而这些栈帧同时会修改同一份`ActivationRecords`，就会出现冲突导致结果不对
+    - **解决方案**：需要记录闭包捕获到的变量，然后利用`AccessLinkBuilder`的逻辑使得 `accessLink` 指向闭包捕获到的变量，而不是指向包裹这个闭包的活动记录(ActivationRecords)，然后在运行的时候再动态创建对应的活动记录，使得每个栈帧的活动记录隔离，避免冲突
+2.  **问题：无法确保嵌套函数忽略其定义时尚未声明的外层局部变量**
+    - **现象和原因**：一开始的设计是为每一个block或function创建一个活动记录，然后在他们的活动记录中存放对应作用域的变量（通过map存放，没有顺序），然后在变量查找时，沿着`accessLink`在活动记录中找变量的定义。由于没有顺序，就会导致无法确保嵌套函数忽略其定义时尚未声明的外层局部变量。
+    - **解决方案**：这里的解决方案虽然能解决问题，但是确实不好（下次lab前会尽量修复），理想中的方式是为活动记录中的变量规定顺序，但是由于代码设计的问题不好实现。所以就采取了一种有点投机取巧的方式：对每一个声明的变量都用一个活动记录（ActivationRecords）包裹，然后前面声明的变量的活动记录会指向（controlLink）下一个变量声明的活动记录，然后再加上对于同一个静态作用域防止同名变量定义的补丁。
