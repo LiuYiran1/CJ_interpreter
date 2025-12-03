@@ -1,7 +1,6 @@
-func add(x: Int64, y: Int64): Int64 {
-    return x + y
-}
+func add(x: Int64, y: Int64): Int64 {}
 
 main() {
-    add(5)
+    add(1, 2)
+    1
 }

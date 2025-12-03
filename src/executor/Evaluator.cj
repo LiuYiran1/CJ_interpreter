@@ -39,27 +39,31 @@ public open class Evaluator <: Visitor<Value> {
     }
 
     public open override func visit(program: Program): Value {
-        // 1. 获取全局作用域 (在 init 中已经压入栈顶)
+        // 获取全局作用域
         let globalRecords = match (curRecords) {
             case Some(r) => r
             case None => throw Exception("Evaluator initialized incorrectly")
         }
 
-        // 注册/更新全局函数
+        // Pass 1: 注册全局函数
         for (decl in program.decls) {
             match (decl) {
                 case funcDecl: FuncDecl =>
-                    // AccessLinkBuilder 可能已经添加了 Record，但那个 FuncValue 的 env 是 None。
-                    // 我们需要创建一个带有当前 GlobalEnv 的新 FuncValue。
-
-                    let capturedEnv = globalRecords // 全局函数的环境就是 Global
-                    let funcVal = Value.from(FuncValue(funcDecl, capturedEnv))
-
-                    // 更新或添加
                     let funcName = funcDecl.identifier.value
+
+                    // 检查是否与内置函数重名
+                    if (funcName == "println") {
+                        throw CjcjRuntimeErrorWithLocation(
+                            ErrorCode.DUPLICATED_DEF,
+                            "Cannot redefine builtin function 'println'",
+                            funcDecl
+                        )
+                    }
+
+                    let capturedEnv = globalRecords
+                    let funcVal = Value.from(FuncValue(funcDecl, capturedEnv))
                     let newRecord = Record(funcDecl.identifier, Some(funcVal), None, funcDecl.keyword, funcDecl)
 
-                    // 因为 AccessLinkBuilder 已经加过一次了，这里用 update 或者覆盖
                     if (globalRecords.items.contains(funcName)) {
                         globalRecords.items[funcName] = newRecord
                     } else {
@@ -67,7 +71,6 @@ public open class Evaluator <: Visitor<Value> {
                     }
 
                 case mainDecl: MainDecl =>
-                    // Main 同理
                     let mainVal = Value.from(MainValue(mainDecl))
                     let record = Record(mainDecl.identifier, Some(mainVal), None, mainDecl.keyword, mainDecl)
 
@@ -84,7 +87,18 @@ public open class Evaluator <: Visitor<Value> {
         for (decl in program.decls) {
             match (decl) {
                 case varDecl: VarDecl =>
-                    // 检查是否有初始化表达式
+                    let varName = varDecl.identifier.value
+
+                    // 检查是否与内置函数重名
+                    if (varName == "println") {
+                        throw CjcjRuntimeErrorWithLocation(
+                            ErrorCode.DUPLICATED_DEF,
+                            "Cannot redefine builtin function 'println' as a variable",
+                            varDecl
+                        )
+                    }
+
+                    // 检查初始化表达式
                     let initExpr = match (varDecl.initializer) {
                         case Some(e) => e
                         case None => throw CjcjRuntimeErrorWithLocation(
@@ -94,13 +108,9 @@ public open class Evaluator <: Visitor<Value> {
                         )
                     }
 
-                    // 执行初始化表达式
-                    // 此时 curRecords 是 GlobalRecords。
-                    // 只能访问之前已定义的变量（因为之后的还没加到 items 里）
+                    // 执行初始化
                     let initVal = initExpr.traverse(this)
 
-                    // 注册全局变量
-                    let varName = varDecl.identifier.value
                     let record = Record(
                         varDecl.identifier,
                         Some(initVal),
@@ -115,10 +125,10 @@ public open class Evaluator <: Visitor<Value> {
             }
         }
 
+        // 执行 Main
         let mainValue = try {
             globalRecords.getStaticValue("main", program)
         } catch (e: CjcjRuntimeErrorWithLocation) {
-            // 如果没找到 main
             return Value.VUnit
         }
 
@@ -127,25 +137,15 @@ public open class Evaluator <: Visitor<Value> {
             case _ => throw CjcjRuntimeErrorWithLocation(ErrorCode.CALLEE_NOT_FUNCTION, "main 不是 Main 类型", program)
         }
 
-        // Main Block
-        let mainStackFrame = FuncActivationRecords(
-            "main",
-            globalRecords, // Access Link -> Global
-            None,
-            program,
-            true // isMain
-        )
-        // Main 的动态链指向 Global
+        let mainStackFrame = FuncActivationRecords("main", globalRecords, None, program, true)
         mainStackFrame.controlLink = globalRecords
 
-        // 切换环境
         let oldRecords = curRecords
         curRecords = mainStackFrame
         recordsStack.add(mainStackFrame)
 
         var ret = Value.VUnit
         try {
-            // 手动遍历，避免 visit(Block) 创建额外层级
             for (stmt in mainBlock.nodes) {
                 ret = stmt.traverse(this)
             }
@@ -153,7 +153,6 @@ public open class Evaluator <: Visitor<Value> {
             ret = re.returnValue
         }
 
-        // 恢复环境
         recordsStack.remove()
         curRecords = oldRecords
 

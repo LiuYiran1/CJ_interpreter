@@ -52,9 +52,6 @@ public class FuncActivationRecords <: ActivationRecords {
     }
 
     public func assignParams(actualArgumentsValue: ArrayList<Value>, callNode: Node): Unit {
-        // 这里的 params 应该是你在构建 recordsMap 时存进去的参数列表
-        // 如果你现在的 params 只是 List<String>，建议改成 List<FuncParam>
-
         if (this.params.size != actualArgumentsValue.size) {
             throw CjcjRuntimeErrorWithLocation(ErrorCode.CALL_ARG_COUNT_MISMATCH, "参数数量不匹配", callNode)
         }
@@ -63,13 +60,6 @@ public class FuncActivationRecords <: ActivationRecords {
             let paramDef = params[i] // 假设这是 FuncParam 类型
             let paramName = paramDef.name.value // 获取参数名（真的）
             let actualValue = actualArgumentsValue[i]
-
-            // 核心修复：这里不再是 items[name].updateValue
-            // 而是创建一个新的 Record 并 add 进去
-
-            // 注意：Record 的构造函数需要 (Token, Value, TypeNode, TokenKind, Node)
-            // 你需要根据你的 Record 定义来构造。
-            // 这里假设 paramDef.identifier 是 Token
 
             let newRecord = Record(
                 paramDef.name, // 标识符 Token
