@@ -34,8 +34,14 @@ public abstract class ActivationRecords {
     public func getStaticRecord(name: String, node: Node, isNonLocal: Bool): Record {
         if (items.contains(name)) {
             let record = items[name]
-            // 【新增检查】如果是在非局部作用域（跨越了函数边界）且变量是 VAR (可变)，则报错
-            if (isNonLocal && record.keyword.kind == TokenKind.VAR) {
+
+            // 【关键修复】判断当前是否为全局作用域
+            // 如果 accessLink 为 None，说明已经到了最顶层（Global），
+            // 全局变量不受“内层函数不可访问外层可变变量”的规则限制。
+            let isGlobal = this.accessLink.isNone()
+
+            // 只有在非全局作用域、且跨越了函数边界、且变量可变时，才报错
+            if (!isGlobal && isNonLocal && record.keyword.kind == TokenKind.VAR) {
                 throw CjcjRuntimeErrorWithLocation(
                     ErrorCode.FUNC_USE_MUTABLE_NONLOCAL,
                     "内层函数不允许访问外层函数的可变非局部变量：${name}",
@@ -45,7 +51,6 @@ public abstract class ActivationRecords {
             return record
         } else if (let Some(last) <- accessLink) {
             // 判断下一次查找是否视为“非局部”
-            // 如果当前记录是 FuncActivationRecords，说明再往上找就跳出当前函数了
             var nextIsNonLocal = isNonLocal
             match (this) {
                 case _: FuncActivationRecords => nextIsNonLocal = true
@@ -70,8 +75,11 @@ public abstract class ActivationRecords {
     public func setStaticRecord(name: String, value: Value, node: Node, isNonLocal: Bool): Unit {
         if (items.contains(name)) {
             let record = items[name]
-            // 【新增检查】赋值时同样检查
-            if (isNonLocal && record.keyword.kind == TokenKind.VAR) {
+
+            // 【关键修复】同上，全局变量允许被修改
+            let isGlobal = this.accessLink.isNone()
+
+            if (!isGlobal && isNonLocal && record.keyword.kind == TokenKind.VAR) {
                 throw CjcjRuntimeErrorWithLocation(
                     ErrorCode.FUNC_USE_MUTABLE_NONLOCAL,
                     "内层函数不允许访问外层函数的可变非局部变量：${name}",

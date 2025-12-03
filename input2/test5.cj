@@ -16,6 +16,7 @@ func increment(): Unit {
 }
 
 main() {
+    println(immut)
     increment()
     increment()
     counter
