@@ -7,30 +7,28 @@
 - **功能**：
   - 负责在解释器运行前对 AST 进行一遍静态扫描。
   - 构建每个 AST 节点（主要是 `Block` 和函数定义）的静态父级作用域（Access Link）模板。
-  - 也为了实现对于**空块**的识别
+  - 也为了实现对于**函数body空块**的识别
 
 #### 2. 修正 (`src/executor/ActivationRecords.cj`)
-修正并扩展了 `ActivationRecords` 及其子类 `FuncActivationRecords` 和 `BlockActivationRecords`。
-- **逻辑修正**：
-  - 能区分 **Control Link (动态链)** 和 **Access Link (静态链)**。Control Link 指向调用者，用于函数返回；Access Link 指向定义时的环境，用于变量查找。
-  - 在 `getStaticRecord` 和 `setStaticRecord` 中增加了 `isNonLocal` 标志位及递归传递逻辑，为了实现**内层函数不允许访问外层函数的可变非局部变量**的语义检查
-- **参数绑定**：
+修正了 `ActivationRecords` 及其子类 `FuncActivationRecords` 和 `BlockActivationRecords`。
+- 变量查找功能：
+  - 能区分 Control Link (动态链) 和 Access Link (静态链)。Control Link 指向调用者，用于函数返回；Access Link 指向定义时的环境，用于变量查找。
+  - 在 `getStaticRecord` 和 `setStaticRecord` 中增加了 `isNonLocal` 标志位及递归传递逻辑，为了实现 **内层函数不允许访问外层函数的可变非局部变量** 的语义检查
+- 传参：
   - 在 `FuncActivationRecords` 中实现了 `assignParams`，并在绑定形参时强制将其 `keyword` 设为 `LET`，确保形参在函数体内不可被重新赋值。
 
-#### 3. 值的表示 (`src/executor/Value.cj`)
+#### 3. 添加函数值的表示 (`src/executor/Value.cj`)
 在 `Value` 枚举中加入了函数的运行时表示：
 - `VFunction(FuncValue)`：
-  - `FuncValue` 类中包含 `FuncDecl`（函数定义）和 `capturedEnv`（**捕获的闭包环境**）。这是实现闭包的核心，使得函数离开定义作用域后仍能访问当时的环境。
+  - `FuncValue` 类中包含 `FuncDecl`（函数定义）和 `capturedEnv`（捕获的闭包环境）。
 - `VMain(MainValue)`：用于特殊处理 `main` 函数。
 
-#### 4. 解释器核心 (`src/executor/Evaluator.cj`)
-大幅重构了 `Evaluator` 以支持复杂的语言特性：
-- **两遍扫描机制 (`visit(Program)`)**：
-  - **Pass 1**：注册所有全局函数（允许全局变量初始化时调用任何位置定义的函数）。
-  - **Pass 2**：按顺序初始化全局变量（强制全局变量的定义顺序依赖，防止使用未定义的变量）。
+#### 4. Evaluator中的实现 (`src/executor/Evaluator.cj`)
+- 构建全局函数和全局变量：
+  - 先 `visitProgram` 注册所有全局函数）。然后再按顺序初始化全局变量。
 - **作用域链式嵌套 (`Scope Chaining`)**：
   - 在 `visit(VarDecl)` 中，每定义一个变量都会创建一个新的嵌套 `BlockActivationRecords`，替代旧的栈顶记录。这完美解决了同个块内变量定义的顺序可见性问题（防止闭包捕获到“未来”定义的变量）。
-- **函数调用逻辑完善 (`visit(CallExpr)`)**：
+- 函数调用 (`visit(CallExpr)`)：
   - 实现了**词法作用域**（Lexical Scoping）：在调用者的环境中计算实参值，然后切换到被调用者的环境（恢复闭包捕获的 Access Link）。
   - 实现了**即时类型检查**：每计算一个实参立即检查其与形参的类型匹配情况。
   - 实现了**返回值类型检查**：函数执行结束后检查返回值与声明类型是否一致。

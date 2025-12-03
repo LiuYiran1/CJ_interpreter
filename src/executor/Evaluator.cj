@@ -45,7 +45,7 @@ public open class Evaluator <: Visitor<Value> {
             case None => throw Exception("Evaluator initialized incorrectly")
         }
 
-        // Pass 1: 注册全局函数
+        // 注册全局函数
         for (decl in program.decls) {
             match (decl) {
                 case funcDecl: FuncDecl =>
@@ -961,13 +961,41 @@ public open class Evaluator <: Visitor<Value> {
         var varName: String = decl.identifier.value;
         var newRecord: Record = Record(decl.identifier, exp_val, decl.declType, decl.keyword, decl);
 
-        // 获取当前环境
         if (let Some(current) <- curRecords) {
+
+            // 【新增逻辑】检查当前块内是否重复定义，md成石山代码了
+            var ptr = current
+            while (true) {
+                // 检查当前层是否有同名变量
+                if (ptr.items.contains(varName)) {
+                    throw CjcjRuntimeErrorWithLocation(
+                        ErrorCode.DUPLICATED_DEF,
+                        "变量重复定义：${varName}",
+                        decl
+                    )
+                }
+
+                // 如果当前节点是 VarDecl 产生的链式节点，还需要继续往上查前一个变量定义。
+                if (ptr.isVarChainScope) {
+                    if (let Some(parent) <- ptr.accessLink) {
+                        ptr = parent
+                    } else {
+                        break // 理论上不应发生，链式节点肯定有 parent
+                    }
+                } else {
+                    // 如果当前节点不是链式节点
+                    break
+                }
+            }
+
             let chainedScope = BlockActivationRecords(
                 "scope_" + varName,
                 current.controlLink,
                 current // Access Link 指向旧的 current
             )
+
+            // 标记这是一个变量链式作用域
+            chainedScope.isVarChainScope = true
 
             chainedScope.addRecord(varName, newRecord, decl)
 

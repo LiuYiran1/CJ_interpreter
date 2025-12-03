@@ -10,6 +10,8 @@ public abstract class ActivationRecords {
     public var accessLink: ?ActivationRecords // 静态链（闭包/静态作用域）
     public let items: HashMap<String, Record>
 
+    public var isVarChainScope: Bool = false // 防止链式的作用域会无法检测重复定义
+
     public init(_name: ?String, _accessLink: ?ActivationRecords) {
         this.name = _name
         this.controlLink = None
