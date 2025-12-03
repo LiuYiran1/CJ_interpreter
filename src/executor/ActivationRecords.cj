@@ -37,9 +37,7 @@ public abstract class ActivationRecords {
         if (items.contains(name)) {
             let record = items[name]
 
-            // 【关键修复】判断当前是否为全局作用域
-            // 如果 accessLink 为 None，说明已经到了最顶层（Global），
-            // 全局变量不受“内层函数不可访问外层可变变量”的规则限制。
+            // 判断当前是否为全局作用域
             let isGlobal = this.accessLink.isNone()
 
             // 只有在非全局作用域、且跨越了函数边界、且变量可变时，才报错

@@ -963,7 +963,7 @@ public open class Evaluator <: Visitor<Value> {
 
         if (let Some(current) <- curRecords) {
 
-            // 【新增逻辑】检查当前块内是否重复定义，md成石山代码了
+            //检查当前块内是否重复定义，md成石山代码了
             var ptr = current
             while (true) {
                 // 检查当前层是否有同名变量
