@@ -1,0 +1,83 @@
+diff --git a/src/executor/types/Operator.cj b/src/executor/types/Operator.cj
+index bd476dc..6ce4866 100644
+--- a/src/executor/types/Operator.cj
++++ b/src/executor/types/Operator.cj
+@@ -4,12 +4,11 @@ import cjcj.executor.utils.*
+ import cjcj.scanner.TokenKind
+ 
+ public func opTypeArithmetic(x: CJType, y: CJType, op: TokenKind): CJType {
+-    if (x == TypeManager.TInt64 && y == TypeManager.TInt64) {
++    if (TypeManager.isSubtype(TypeManager.TInt64, x) && TypeManager.isSubtype(TypeManager.TInt64, y)) {
+         TypeManager.TInt64
+-    } else if (op == TokenKind.ADD && x == TypeManager.TString && y == TypeManager.TString) {
++    } else if (op == TokenKind.ADD && TypeManager.isSubtype(TypeManager.TString, x) && TypeManager.isSubtype(TypeManager.TString, y)) {
+         TypeManager.TString
+-    } else if (op == TokenKind.MUL && ((x == TypeManager.TString && y == TypeManager.TInt64) || (x == TypeManager
+-        .TInt64 && y == TypeManager.TString))) {
++    } else if (op == TokenKind.MUL && ((TypeManager.isSubtype(TypeManager.TString, x) && TypeManager.isSubtype(TypeManager.TInt64, y)) || (TypeManager.isSubtype(TypeManager.TInt64, x) && TypeManager.isSubtype(TypeManager.TString, y)))) {
+         TypeManager.TString
+     } else {
+         match (op) {
+@@ -36,6 +35,8 @@ public func opTypeCompare(x: CJType, y: CJType, op: TokenKind): CJType {
+             TypeManager.TBool || x == TypeManager.TUnit))) {
+             return TypeManager.TBool
+         }
++    } else if (x == TypeManager.TNothing || y == TypeManager.TNothing) {
++        return TypeManager.TBool
+     }
+     match (op) {
+         case TokenKind.LT | TokenKind.LE | TokenKind.GT | TokenKind.GE => throw CjcjRuntimeError(
+@@ -51,11 +52,11 @@ public func opTypeCompare(x: CJType, y: CJType, op: TokenKind): CJType {
+ public func opTypeUnary(x: CJType, op: TokenKind) {
+     match (op) {
+         case TokenKind.NOT =>
+-            if (x != TypeManager.TBool) {
++            if (!TypeManager.isSubtype(TypeManager.TBool, x)) {
+                 throw CjcjRuntimeError(ErrorCode.NOT_TYPE_MISMATCH, "Can't apply NOT operator to value: ${x}")
+             }
+         case TokenKind.SUB =>
+-            if (x != TypeManager.TInt64) {
++            if (!TypeManager.isSubtype(TypeManager.TInt64, x)) {
+                 throw CjcjRuntimeError(ErrorCode.NEG_TYPE_MISMATCH, "Can't apply NEGATE operator to value: ${x}")
+             }
+         case _ => throw Exception("Unknown unary operator: ${op}")
+diff --git a/src/executor/types/TypeChecker.cj b/src/executor/types/TypeChecker.cj
+index aa6e2fb..4dc642b 100644
+--- a/src/executor/types/TypeChecker.cj
++++ b/src/executor/types/TypeChecker.cj
+@@ -70,7 +70,7 @@ public abstract class TypeChecker <: Visitor<CJType> {
+             let left = expr.left.traverse(this)
+             if (expr.oper.kind == TokenKind.AND || expr.oper.kind == TokenKind.OR) {
+                 let isOr = (expr.oper.kind == TokenKind.OR)
+-                if (left != TypeManager.TBool) {
++                if (!TypeManager.isSubtype(TypeManager.TBool, left)) {
+                     throw CjcjRuntimeErrorWithLocation(if (isOr) {
+                         ErrorCode.OR_TYPE_MISMATCH
+                     } else {
+@@ -78,7 +78,7 @@ public abstract class TypeChecker <: Visitor<CJType> {
+                     }, "operator's left operand is not a Boolean: ${left}", expr)
+                 }
+                 let right = expr.right.traverse(this)
+-                if (right != TypeManager.TBool) {
++                if (!TypeManager.isSubtype(TypeManager.TBool, right)) {
+                     throw CjcjRuntimeErrorWithLocation(if (isOr) {
+                         ErrorCode.OR_TYPE_MISMATCH
+                     } else {
+@@ -230,7 +230,7 @@ public abstract class TypeChecker <: Visitor<CJType> {
+     }
+ 
+     public func handleIf(expr: IfExpr, isValueUsed!: Bool) {
+-        if (expr.condition.traverse(this) != TypeManager.TBool) {
++        if (!TypeManager.isSubtype(TypeManager.TBool, expr.condition.traverse(this))) {
+             throw CjcjRuntimeErrorWithLocation(ErrorCode.IF_TYPE_MISMATCH, "if condition is not a Boolean",
+                 expr.condition)
+         }
+@@ -263,7 +263,7 @@ public abstract class TypeChecker <: Visitor<CJType> {
+     }
+ 
+     public open override func visit(expr: WhileExpr): CJType {
+-        if (expr.condition.traverse(this) != TypeManager.TBool) {
++        if (!TypeManager.isSubtype(TypeManager.TBool, expr.condition.traverse(this))) {
+             throw CjcjRuntimeErrorWithLocation(ErrorCode.WHILE_TYPE_MISMATCH, "while condition is not a Boolean",
+                 expr.condition)
+         }
